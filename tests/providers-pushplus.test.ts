@@ -48,6 +48,36 @@ test('pushplus local checks never contact network; remote check only reads the b
   for (const entry of f.seen) assert.ok(!entry.url.href.includes(token) && !entry.url.href.includes(secret));
 });
 
+test('pushplus accepts numeric-string access lifetime and keeps bounded cache expiration', async () => {
+  for (const expiresIn of [120, '120', 7200, '7200', String(10 ** 10 - 1)]) {
+    let now = 100_000;
+    const f = fixture(x => x.url.pathname === paths.access ? response({ code: 200, data: { accessKey, expiresIn } }) : undefined);
+    const provider = new PushplusProvider(f.fetcher, () => now);
+    assert.equal((await provider.check(config(), { remote: true })).ok, true);
+    now += (Math.min(Number(expiresIn), 7200) - 60) * 1000 - 1;
+    assert.equal((await provider.check(config(), { remote: true })).ok, true);
+    assert.equal(f.seen.filter(x => x.url.pathname === paths.access).length, 1);
+    now += 1;
+    assert.equal((await provider.check(config(), { remote: true })).ok, true);
+    assert.equal(f.seen.filter(x => x.url.pathname === paths.access).length, 2);
+    assert.equal(f.seen.filter(x => x.url.pathname === paths.account).length, 3);
+    assert.equal(f.seen.filter(x => x.url.pathname === paths.send).length, 0);
+    await provider.shutdown();
+  }
+});
+
+test('pushplus rejects invalid access lifetimes before account reads or sends', async () => {
+  for (const expiresIn of [undefined, null, false, true, [], {}, 0, -1, NaN, Infinity, '', '0', '-1', ' 7200', '7200 ', '7200\n', '7e3', '7200.0', 'Infinity', '7200x', String(10 ** 10)]) {
+    const f = fixture(x => x.url.pathname === paths.access ? response({ code: 200, data: { accessKey, expiresIn } }) : undefined);
+    const provider = new PushplusProvider(f.fetcher);
+    const result = await provider.check(config(), { remote: true });
+    assert.equal(result.ok, false); assert.match(result.message, /不符合账号接口约定/);
+    assert.deepEqual(f.seen.map(x => x.url.pathname), [paths.access]);
+    for (const value of [token, secret, accessKey, phone]) assert.ok(!result.message.includes(value));
+    await provider.shutdown();
+  }
+});
+
 test('pushplus account checks distinguish API authorization, IP and token failures without leaking raw responses', async () => {
   for (const [code, explanation] of [[401, /开放接口未授权/], [403, /出口 IP 未获授权/], [903, /用户 Token 无效/], [900, /停止重复核对/], [500, /平台系统异常/], [600, /数据异常/], [999, /不能单独确定/], [302, /未登录/], [805, /无权查看/], [888, /积分不足/], [905, /实名认证/], [777, /平台未完成账号核对/]] as const) {
     const f = fixture(x => x.url.pathname === paths.access ? response({ code, msg: `${token} ${secret} ${phone}`, data: null }) : undefined);

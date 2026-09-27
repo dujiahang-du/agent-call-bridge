@@ -105,7 +105,10 @@ export class PushplusProvider implements CallProvider {
       signal?.throwIfAborted();
       if (body.code !== 200) throw new RequestFailure(`API_${body.code}`, true);
       if (!object(body.data)) throw new RequestFailure('INVALID_ACCESS_RESPONSE');
-      const { accessKey, expiresIn } = body.data;
+      const { accessKey } = body.data;
+      const lifetime = body.data.expiresIn;
+      // 真实接口可能把有效期作为十进制字符串返回；仅转换有界纯数字，避免空值等被隐式接受。
+      const expiresIn = typeof lifetime === 'string' && lifetime.length > 0 && lifetime.length <= 10 && !/[^0-9]/.test(lifetime) ? Number(lifetime) : lifetime;
       if (!credential(accessKey) || typeof expiresIn !== 'number' || !Number.isFinite(expiresIn) || expiresIn <= 0) throw new RequestFailure('INVALID_ACCESS_RESPONSE');
       if (this.pending?.identity === identity) this.cache = { identity, accessKey, expiresAt: this.now() + Math.max(0, Math.min(expiresIn, 7200) - 60) * 1000 };
       return accessKey;

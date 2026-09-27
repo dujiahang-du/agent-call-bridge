@@ -1,5 +1,7 @@
 # 调研与决策（2026-09-27）
 
+pushplus真实只读验证补充：getAccessKey成功响应中的expiresIn实测为字符串，与公开文档示例数字类型不同；已兼容严格十进制字符串并保持最多两小时/提前一分钟刷新。真实myInfo能返回完整本人号码，账号、号码、实名及积分检查已通过；只读检查不证明外呼线路可用，没有调用真实/send。特定账号信息、地址与原始证据不发布。
+
 ## 路线
 TypeScript / Fastify 5 / React 19 / Vite 8 / Node SQLite。Windows 系统中文 TTS；baresip 独立进程。不引入整个 Agent 平台。
 
