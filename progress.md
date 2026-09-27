@@ -1,6 +1,6 @@
 # 交付与恢复状态
 
-v0.1.4旧后台迁移修复已验收，正在安全发布。用户根目录错误源于仍运行的旧后台实例，已核实身份后正常停止，真实黑窗口与工作台恢复。补同目录安全迁移与旧暂停状态兼容；ZIP92项、无系统Node/npm诊断7项、界面1项回归通过，无本次测试进程残留或真实外呼。公开线路方向明确为原生+86手机接听；Zadarma仅待审核的个人候选，详见docs/personal-86-options.md，不能称为已落实。下一步核实Release资产后更新交付状态。
+最新v0.1.4已发布：https://github.com/dujiahang-du/agent-call-bridge/releases/tag/v0.1.4 ，代码标签cbc089c；资产SHA与实测ZIP一致，匿名下载200。用户根目录错误源于仍运行的旧后台实例，已核实身份后正常停止，真实黑窗口与工作台恢复。补同目录安全迁移与旧暂停状态兼容；ZIP92项、无系统Node/npm诊断7项、界面1项回归及独立审查通过，无本次测试进程残留或真实外呼。当前实际Agent修复汇报已进入本机Bridge的Mock队列，因保留原暂停而queued，不能称其已播完。公开线路方向明确为原生+86手机接听；Zadarma仅待审核的个人候选，详见docs/personal-86-options.md，不能称为已落实。发布扫描已覆盖11次历史提交，零凭据发现。
 
 最新版本 v0.1.3 已发布：https://github.com/dujiahang-du/agent-call-bridge/releases/tag/v0.1.3 。代码标签a6c6a1c。双击启动、关窗/Ctrl+C停止本次服务及子进程；重复窗口隔离，正常重开直接Mock，手动暂停保留，真实授权不恢复。类型/构建、62/62后端等、5/5浏览器、59/59最终包窗口检查、7项无系统Node/npm运行诊断通过，独立复审通过。ZIP SHA256：268a08bb19b5200e86bf38abb6ef18cb9674bf86f2815de53165d3c65fb60884，与GitHub资产digest一致、匿名下载200。候选和9次提交历史扫描无泄漏。证据见.local/launcher-evidence-v013.json与.local/portable-static-v013.json；所有本次测试进程已退出。以下为此前版本记录。
 
