@@ -44,6 +44,8 @@ fixtureAllowlist.set('scripts/check-safe.mjs', new Set([...fixtureAllowlist.valu
 // requires another visual review AND a new exact digest; no directory exemption.
 const reviewedAssets = new Map([
   ['docs/screenshots/workbench.png', 'c3440b2ceb9946928b724a23a14e6535b82e9247f5202c19c28f012c29bd3404'],
+  // v0.1.1 isolated Mock screenshot, visually reviewed; older digest remains for history.
+  ['docs/screenshots/workbench-v0.1.1.png', 'f7f747f5ad4d70c69529051f1bc1c3bdba48876eb98311ff263c1d4e9c04da6d'],
 ]);
 
 function matches(text, path) {

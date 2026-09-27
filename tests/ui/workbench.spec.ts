@@ -21,6 +21,7 @@ test('首次启动向导、Mock通知、配置保存和重载', async ({ page })
   await page.getByRole('button', { name: '通话设置', exact: true }).click();
   await expect(page.getByLabel('无进展提醒（分钟）')).toHaveValue('20');
   await page.getByRole('button', { name: '工作台', exact: true }).click();
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: '.local/ui-workbench.png', fullPage: true });
 });
 test('暂停/恢复、中文语音和受限线路提示', async ({ page }) => {
@@ -75,5 +76,15 @@ test('SIP 无手机号配置可保存，准备真实测试保持零次拨号', a
   const records=await (await request.get('/api/notifications',{headers})).json();
   const prepared=records.find((n:any)=>n.taskId==='real-test');
   expect(prepared.status).toBe('awaiting_authorization'); expect(prepared.attempts).toBe(0);
+  await page.setViewportSize({width:360,height:844});
+  await expect(page.getByRole('navigation',{name:'主导航'}).getByRole('button',{name:'通话设置',exact:true})).toHaveAttribute('aria-current','page');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  await page.getByLabel('输入“拨打本次真实电话”').focus();
+  await expect(page.getByLabel('输入“拨打本次真实电话”')).toBeFocused();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({path:'.local/ui-settings-mobile.png',fullPage:true});
+  await page.getByRole('button',{name:'通知记录',exact:true}).click();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  await page.screenshot({path:'.local/ui-history-mobile.png',fullPage:true});
   const restore=await request.put('/api/config',{headers,data:{mode:'mock'}}); expect(restore.ok()).toBeTruthy();
 });
