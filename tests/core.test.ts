@@ -13,6 +13,23 @@ import { canonicalDestination } from '../src/core/destination.js';
 
 async function setup(){const dir=mkdtempSync(join(tmpdir(),'acb-test-'));const app=await createApp({dataDir:dir,projectRoot:dir,testMode:true});await app.ready();return {dir,app,headers:{authorization:`Bearer ${app.localToken}`},async close(){await app.close();rmSync(dir,{recursive:true,force:true});}};}
 const event=(overrides:any={})=>({eventId:'event-1',taskId:'task-1',source:'test-agent',type:'task_completed',summary:'测试任务完成',...overrides});
+test('reopening after normal shutdown resumes Mock, keeps real calls locked, and preserves emergency pause',async()=>{
+  const s=await setup();let app=s.app;
+  try{
+    app.acb.updateConfig({mode:'sip',recipient:{consent:true},providers:{sip:{server:'pbx.example',extension:'201'}}});
+    app.acb.enableReal('我确认线路可用并同意受限自动外呼及可能费用');
+    await app.close();
+    app=await createApp({dataDir:s.dir,projectRoot:s.dir,testMode:true});await app.ready();
+    assert.equal(app.acb.paused,false);assert.equal(app.acb.realCallsEnabled,false);
+    const mock=app.acb.accept(event(),true);await idle(app);
+    assert.equal(app.acb.notifications().find(n=>n.id===mock.notification.id)?.status,'completed');
+    await app.acb.pause(true);await app.close();
+    app=await createApp({dataDir:s.dir,projectRoot:s.dir,testMode:true});await app.ready();
+    assert.equal(app.acb.paused,true);assert.equal(app.acb.realCallsEnabled,false);
+    const waiting=app.acb.accept(event({eventId:'after-emergency'}),true);await idle(app);
+    assert.equal(app.acb.notifications().find(n=>n.id===waiting.notification.id)?.status,'queued');
+  }finally{await app.close();rmSync(s.dir,{recursive:true,force:true});}
+});
 async function idle(app:any){for(let i=0;i<30;i++){await app.acb.drain();if(app.acb.notifications().every((r:any)=>r.status!=='dialing'))break;await new Promise(r=>setTimeout(r,10));}}
 
 test('API rejects missing auth, foreign host and origin',async()=>{const s=await setup();try{assert.equal((await s.app.inject('/api/status')).statusCode,401);assert.equal((await s.app.inject({url:'/api/status',headers:{...s.headers,host:'evil.example'}})).statusCode,403);assert.equal((await s.app.inject({url:'/api/status',headers:{...s.headers,origin:'https://evil.example'}})).statusCode,403);assert.equal((await s.app.inject({url:'/api/status',headers:s.headers})).statusCode,200);}finally{await s.close();}});

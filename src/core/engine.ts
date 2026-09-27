@@ -18,6 +18,10 @@ export class Engine {
   realCallsEnabled=false; private activeId?:string;
   constructor(readonly dataDir:string,readonly providers:Record<ProviderId,CallProvider>,readonly testMode=false){
     this.config=new ConfigStore(dataDir,testMode);this.store=new Store(dataDir);
+    // Reopening resumes normal processing, but preserves an explicit emergency pause.
+    // Real call authorization is never restored.
+    if(this.store.meta('resume_after_shutdown','false')==='true')this.store.setMeta('paused','false');
+    this.store.setMeta('resume_after_shutdown','false');
     // Authorization is a live user decision, never restored from a prior process.
     this.store.run("UPDATE notifications SET authorized=0,status='awaiting_authorization' WHERE provider!='mock' AND status='queued'");
     this.timer=setInterval(()=>{void this.drain();},250);this.timer.unref();
@@ -25,7 +29,7 @@ export class Engine {
   get paused(){return this.store.meta('paused','false')==='true';}
   get stopping(){return this.shutdownStarted;}
   private ensureRunning(){if(this.shutdownStarted||this.closed)throw new Error('服务正在关闭，拒绝新操作');}
-  beginShutdown(){if(this.shutdownStarted)return;this.shutdownStarted=true;this.store.setMeta('paused','true');this.disableReal();this.store.run("UPDATE decisions SET status='cancelled' WHERE status='pending'");}
+  beginShutdown(){if(this.shutdownStarted)return;this.shutdownStarted=true;this.store.setMeta('resume_after_shutdown',String(!this.paused));this.store.setMeta('paused','true');this.disableReal();this.store.run("UPDATE decisions SET status='cancelled' WHERE status='pending'");}
   updateConfig(patch:unknown){this.ensureRunning();const result=this.config.update(patch);this.disableReal();return result;}
   enableReal(confirmation:string){this.ensureRunning();if(confirmation!=='我确认线路可用并同意受限自动外呼及可能费用')throw new Error('需要明确确认线路、费用和自动外呼');const c=this.config.read();if(c.mode==='mock'||!canonicalDestination(c)||!c.recipient.consent)throw new Error('请先设置真实服务、本人号码或 SIP 分机目标及接听同意');this.realCallsEnabled=true;return this.status();}
   status(){const events=this.store.all('SELECT data,created_at FROM events ORDER BY created_at DESC LIMIT 100');const sources=new Map<string,any>();for(const row of events){const e=JSON.parse(row.data);if(e.source!=='mock-ui'&&!sources.has(e.threadId??e.source))sources.set(e.threadId??e.source,{source:e.source,threadId:e.threadId,sessionId:e.sessionId,lastSeen:new Date(row.created_at).toISOString()});}return {mode:this.config.read().mode,paused:this.paused,realCallsEnabled:this.realCallsEnabled,connectedAgents:[...sources.values()],lastEventAt:events[0]?new Date(events[0].created_at).toISOString():null,capabilities:{desktopBridge:true,mcp:true,desktopWakeFinishedTask:false,managedCodex:'protocol-adapter-unverified-model',realCalls:'requires-explicit-authorization',sip:'see-provider-check',stallMonitoring:'explicit-heartbeat-only'},activeMonitors:this.store.get('SELECT COUNT(*) AS n FROM task_monitors WHERE active=1').n};}

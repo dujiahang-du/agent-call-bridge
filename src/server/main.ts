@@ -13,4 +13,9 @@ const app=await createApp({dataDir,onShutdown:()=>process.exit(0)});const port=N
 const callbackPort=Number(process.env.ACB_CALLBACK_PORT??17862);if(!Number.isInteger(callbackPort)||callbackPort<1024||callbackPort>65535||callbackPort===port)throw new Error('回调端口需为不同的 1024–65535 端口');const callback=await createTwilioCallbackApp({getConfig:()=>app.acb.config.read(),findCallById:id=>app.acb.findCallById(id),updateCall:(id,result)=>app.acb.updateCall(id,result),respondDecision:input=>app.acb.respondDecision(input)});app.callbackState.port=callbackPort;try{await callback.listen({host:'127.0.0.1',port:callbackPort});app.callbackState.ready=true;}catch{console.error('独立回调监听器不可用，请检查端口；管理界面仍可配置，真实双向电话暂不可用。');}app.addHook('onClose',async()=>callback.close());
 await app.listen({host:'127.0.0.1',port});writeFileSync(join(dataDir,'connection.json'),JSON.stringify({url:`http://127.0.0.1:${port}`,token:app.localToken}),{mode:0o600});
 console.log(`Agent Call Bridge 已启动：http://127.0.0.1:${port}（默认 Mock；请通过启动器进入已认证界面）`);
-for(const signal of ['SIGINT','SIGTERM'] as const)process.on(signal,()=>{void app.close().then(()=>process.exit(0));});
+let stopping=false;
+for(const signal of ['SIGINT','SIGTERM','SIGHUP','SIGBREAK'] as const)process.on(signal,()=>{
+  if(stopping)return;stopping=true;app.acb.beginShutdown();
+  // Start cancelling immediately, even while Fastify is waiting for a long HTTP request.
+  void app.acb.pause(true).catch(()=>undefined).then(()=>app.close()).then(()=>process.exit(0),()=>process.exit(1));
+});
