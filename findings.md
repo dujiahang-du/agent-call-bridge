@@ -16,4 +16,6 @@ TypeScript / Fastify 5 / React 19 / Vite 8 / Node SQLite。Windows 系统中文 
 - Windows DPAPI CurrentUser 已验证；换电脑需重新填写凭据并登录，不复制认证。本期没有凭据导出或跨电脑迁移功能。
 
 ## 费用及阻塞
+2026-09-27 申请入口补核：Twilio https://www.twilio.com/try-twilio 当前转至官方认证页，试用条件见 https://www.twilio.com/docs/usage/trials 。阿里云企业资质官方文档链接至 https://dyvms.console.aliyun.com/dyvms.htm （控制台需登录，未核验账号实际开通）；模板申请见 https://help.aliyun.com/zh/vms/user-guide/create-a-text-to-speech-template 。界面只展示固定外链，不附带本机号码、凭据或token，不自动注册或充值。
+
 没有已核实的个人 +86 云外呼路线。Twilio 非 +86 需号码/地区权限/计费条件与HTTPS回调；阿里云需合格企业+模板审核。真实拨号与新付费模型调用需单独授权。SIP运营商/ATA/NAT等待实测。

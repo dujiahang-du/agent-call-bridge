@@ -198,6 +198,13 @@ audio { display: block; margin: 15px 0 0; width: 100%; height: 42px; }
 .authorization-form .section-head h3 { margin: 0; }
 .real-controls .field { max-width: 660px; }
 .real-controls .event-list .button { flex-shrink: 0; }
+.provider-help { background: #f4f7ff; border: 1px solid #dfe7fa; border-radius: 12px; padding: 18px; margin: 17px 0; }
+.provider-help h3 { font-size: 14px; color: #335191; margin-bottom: 9px; }
+.provider-help p { font-size: 12px; color: #536a92; margin-bottom: 13px; }
+.provider-links { display: flex; flex-wrap: wrap; gap: 9px; margin: 12px 0; }
+.provider-links a { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 9px 11px; border: 1px solid #d8e2fa; background: #fff; color: #3458ba; border-radius: 8px; font-size: 12px; text-decoration: none; }
+.provider-links a:hover { border-color: #91a9eb; background: #edf2ff; }
+.provider-help small { display: block; color: #647493; font-size: 11px; line-height: 1.8; }
 footer { padding: 22px 40px; border-top: 1px solid var(--line); font-size: 10px; color: var(--subtle); display: flex; justify-content: space-between; letter-spacing: .5px; }
 
 @media(min-width:1600px) {
