@@ -104,6 +104,7 @@ test('pushplus 账号核对先保存，只在点击后请求；失败显示错�
   const before = await (await request.get('/api/notifications', { headers: headers() })).json();
   await page.getByRole('button', { name: '核对 pushplus 绑定账号（不拨号）', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('模拟账号核对完成，未拨号');
+  await expect(page.getByRole('status')).toBeInViewport({ ratio: 1 });
   expect(order).toEqual(['save', 'account-check']);
   shouldFail = true;
   await page.getByRole('button', { name: '核对 pushplus 绑定账号（不拨号）', exact: true }).click();
@@ -111,4 +112,17 @@ test('pushplus 账号核对先保存，只在点击后请求；失败显示错�
   expect(accountChecks).toBe(2);
   expect(await (await request.get('/api/notifications', { headers: headers() })).json()).toEqual(before);
   expect((await (await request.get('/api/status', { headers: headers() })).json()).realCallsEnabled).toBe(false);
+});
+
+for (const width of [1440, 360]) test(`${width}px 保存成功提示在滚动后仍可见并可关闭`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 780 });
+  await page.getByRole('combobox', { name: '电话服务', exact: true }).selectOption('pushplus');
+  await save(page);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+  await expect(page.getByRole('status')).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  await page.screenshot({ path: `.local/ui-notice-${width}.png` });
+  await page.getByRole('button', { name: '关闭提示', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveCount(0);
 });

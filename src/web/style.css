@@ -170,7 +170,8 @@ audio { display: block; margin: 15px 0 0; width: 100%; height: 42px; }
 .alert { background: #fff0f2; border: 1px solid #efced4; color: #9e4154; flex-wrap: wrap; }
 .alert span { overflow-wrap: anywhere; }
 .alert p { margin: 0; width: 100%; color: #9e4154; font-size: 12px; }
-.notice { background: #ebf7f1; border: 1px solid #d0eade; color: #2e7259; }
+.notice { position: fixed; right: 24px; bottom: 24px; z-index: 20; width: max-content; max-width: min(560px, calc(100vw - 40px)); max-height: calc(100dvh - 140px); overflow-y: auto; overflow-wrap: anywhere; margin: 0; background: #ebf7f1; border: 1px solid #d0eade; color: #2e7259; box-shadow: 0 8px 30px #203c5f24; }
+.notice > svg { flex-shrink: 0; }
 .alert button, .notice button { margin-left: auto; flex-shrink: 0; background: none; border: 0; color: inherit; font-size: 20px; min-width: 32px; min-height: 32px; }
 .decisions { border-color: #ead6b1; background: #fffdf8; }
 .decision { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 0; border-bottom: 1px solid #ede6d8; }
@@ -259,6 +260,7 @@ footer { padding: 22px 40px; border-top: 1px solid var(--line); font-size: 10px;
   .phone-disc { width: 95px; height: 95px; }
 }
 @media(max-width:700px) {
+  .notice { right: 16px; left: 16px; bottom: calc(86px + env(safe-area-inset-bottom)); width: auto; max-width: none; }
   .sidebar { inset: auto 0 0; width: 100%; padding: 6px 10px calc(6px + env(safe-area-inset-bottom)); background: #fffffffa; border: 0; border-top: 1px solid #dce4f2; box-shadow: 0 -4px 20px #253b6110; }
   .sidebar .brand { display: none; }
   .sidebar nav { margin: 0; display: grid; grid-template-columns: repeat(4,1fr); gap: 5px; }
