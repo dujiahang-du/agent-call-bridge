@@ -53,9 +53,16 @@ export class SipEndpoint {
   sipPort = 0;
   diagnostics = '';
   private stopped = false;
+  private starting?: Promise<void>;
+  private stopping?: Promise<void>;
   constructor(readonly options: EndpointOptions) {}
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    if (this.stopped) return Promise.reject(new Error('SIP endpoint is stopped'));
+    return this.starting ??= this.startInternal();
+  }
+
+  private async startInternal(): Promise<void> {
     const o = this.options;
     await verifySipExecutable(o.executable);
     validateSipValue(o.username, 'user');
@@ -87,6 +94,7 @@ export class SipEndpoint {
     await writeFile(resolve(o.directory, 'config'), config, { mode: 0o600 });
     await writeFile(resolve(o.directory, 'accounts'), account, { mode: 0o600 });
     await writeFile(resolve(o.directory, 'contacts'), '', { mode: 0o600 });
+    if (this.stopped) throw new Error('SIP endpoint stopped during startup');
     this.process = spawn(resolve(o.executable), [], { cwd: o.directory, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let startError = false;
     this.process.on('error', () => { startError = true; });
@@ -94,10 +102,11 @@ export class SipEndpoint {
     this.process.stdout?.on('data', collect); this.process.stderr?.on('data', collect);
     this.process.once('exit', () => this.control.close());
     for (let attempt = 0; attempt < 35; attempt++) {
+      if (this.stopped) throw new Error('SIP endpoint stopped during startup');
       if (startError || this.process.exitCode !== null) throw new Error('SIP executable failed to start');
       try { await this.control.connect(controlPort); return; } catch { await new Promise(resolve => setTimeout(resolve, 100)); }
     }
-    await this.stop(); throw new Error('SIP control did not start');
+    throw new Error('SIP control did not start');
   }
 
   async registration(timeoutMs = 10000): Promise<boolean> {
@@ -112,16 +121,26 @@ export class SipEndpoint {
     return false;
   }
 
-  async stop(removePrivateFiles = false): Promise<void> {
-    if (this.stopped) return;
+  stop(removePrivateFiles = false): Promise<void> {
     this.stopped = true;
+    return this.stopping ??= this.stopInternal(removePrivateFiles);
+  }
+
+  private async stopInternal(removePrivateFiles: boolean): Promise<void> {
+    // Startup must settle first: otherwise a late mkdir/spawn could outlive shutdown.
+    await this.starting?.catch(() => undefined);
     const child = this.process;
-    if (child && child.exitCode === null) {
+    const alive = () => Boolean(child?.pid && child.exitCode === null && child.signalCode === null);
+    if (child && alive()) {
       try { await this.control.command('quit', '', 1000); } catch { /* Best effort graceful unregister. */ }
-      if (child.exitCode === null) {
+      if (alive()) {
         await Promise.race([new Promise<void>(resolve => child.once('exit', () => resolve())), new Promise<void>(resolve => setTimeout(resolve, 1200))]);
       }
-      if (child.exitCode === null) { child.kill(); await new Promise<void>(resolve => child.once('exit', () => resolve())); }
+      if (alive()) {
+        child.kill();
+        await Promise.race([new Promise<void>(resolve => child.once('exit', () => resolve())), new Promise<void>(resolve => setTimeout(resolve, 1200))]);
+        if (alive()) throw new Error('Owned SIP subprocess did not stop');
+      }
     }
     this.control.close();
     if (removePrivateFiles) await rm(this.options.directory, { recursive: true, force: true });

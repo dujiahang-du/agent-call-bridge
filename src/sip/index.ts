@@ -47,19 +47,24 @@ function wavDuration(buffer: Buffer): number {
 export function createSipProvider(options: SipProviderOptions = {}): CallProvider {
   const directory = resolve(options.dataDir ?? '.local', 'sip');
   const calls = new Map<string, ActiveCall>();
+  const endpoints = new Set<SipEndpoint>();
   let preparing = false;
+  let closed = false;
+  let shutdown: Promise<CheckResult> | undefined;
 
   function endpoint(config: AppConfig, id: string, source?: string): SipEndpoint {
+    if (closed) throw new Error('SIP provider is stopped');
     const sip = config.providers.sip;
-    return new SipEndpoint({ executable: sip.executable || defaultSipExecutable(), directory: join(directory, id),
+    const ep = new SipEndpoint({ executable: sip.executable || defaultSipExecutable(), directory: join(directory, id),
       username: sip.username, server: sip.server, serverPort: sip.port, password: sip.password,
       transport: sip.transport.toLowerCase() as 'udp' | 'tcp', register: true, source,
       bindAddress: /^(127\.|localhost$)/.test(sip.server) ? '127.0.0.1' : '0.0.0.0' });
+    endpoints.add(ep); return ep;
   }
   async function finish(call: ActiveCall, result: CallResult): Promise<void> {
     if (call.timer) clearTimeout(call.timer);
-    call.result = result;
-    call.cleanup ??= call.endpoint.stop(true).catch(() => undefined);
+    if (call.result.status === 'accepted') call.result = result;
+    call.cleanup ??= call.endpoint.stop(true).then(() => { endpoints.delete(call.endpoint); }).catch(() => undefined);
     await call.cleanup;
   }
   function failure(message: string, rawCode: string): CallResult { return { status: 'failed', retryable: false, message, rawCode }; }
@@ -69,6 +74,7 @@ export function createSipProvider(options: SipProviderOptions = {}): CallProvide
     async check(config, checkOptions): Promise<CheckResult> {
       let ep: SipEndpoint | undefined;
       try {
+        if (closed) return { ok: false, message: 'SIP 服务已经停止。' };
         validateSipConfig(config);
         await verifySipExecutable(config.providers.sip.executable || defaultSipExecutable());
         if (!options.synthesize) return { ok: false, message: 'SIP 二进制存在，但尚未连接中文语音生成器。' };
@@ -77,9 +83,10 @@ export function createSipProvider(options: SipProviderOptions = {}): CallProvide
         const registered = await ep.registration(options.setupTimeoutMs ?? 10000);
         return { ok: registered, message: registered ? 'SIP 服务器注册成功；尚未拨打分机。' : 'SIP 注册未成功，请核对服务器、账号和网络。' };
       } catch { return { ok: false, message: 'SIP 配置、语音或二进制不可用；请核对地址、账号、UDP/TCP及原生构建。' }; }
-      finally { await ep?.stop(true).catch(() => undefined); }
+      finally { if (ep) await ep.stop(true).then(() => { endpoints.delete(ep!); }).catch(() => undefined); }
     },
     async dial(request: CallRequest, config: AppConfig): Promise<CallResult> {
+      if (closed) return failure('SIP 服务已经停止。', 'SIP_SHUTDOWN');
       if (preparing || [...calls.values()].some(call => call.result.status === 'accepted')) return failure('SIP 已有通话。', 'SIP_BUSY');
       if (!options.synthesize) return failure('SIP 未连接语音生成器。', 'SIP_TTS_MISSING');
       if (request.decision) return failure('SIP 本期支持语音通知；电话决策尚未开放。请在界面回复。', 'SIP_DECISION_UNSUPPORTED');
@@ -91,14 +98,17 @@ export function createSipProvider(options: SipProviderOptions = {}): CallProvide
       try {
         validateSipConfig(config);
         const audio = await options.synthesize(request.text, config.voice.name, config.voice.rate);
+        if (closed) return failure('SIP 服务已经停止，未拨号。', 'SIP_SHUTDOWN');
         const seconds = wavDuration(audio);
         const runDirectory = join(directory, id);
         await mkdir(runDirectory, { recursive: true, mode: 0o700 });
         const audioPath = join(runDirectory, 'announcement.wav');
         // Endpoint protects the directory before configuration; protect audio by writing only after start.
         ep = endpoint(config, id, audioPath); await ep.start();
+        if (closed) return failure('SIP 服务已经停止，未拨号。', 'SIP_SHUTDOWN');
         await writeFile(audioPath, audio, { mode: 0o600 });
         if (!await ep.registration(options.setupTimeoutMs ?? 10000)) return failure('SIP 注册失败，未拨号。', 'SIP_REGISTER_FAILED');
+        if (closed) return failure('SIP 服务已经停止，未拨号。', 'SIP_SHUTDOWN');
         call = { endpoint: ep, played: false, result: { status: 'accepted', callId: id } }; calls.set(id, call);
         if (calls.size > 100) for (const [key, value] of calls) { if (value.result.status !== 'accepted') { calls.delete(key); break; } }
         const sip = config.providers.sip;
@@ -139,7 +149,7 @@ export function createSipProvider(options: SipProviderOptions = {}): CallProvide
         return result;
       } finally {
         preparing = false;
-        if (!call || call.result.status !== 'accepted') { await ep?.stop(true).catch(() => undefined); await rm(join(directory, id), { recursive: true, force: true }).catch(() => undefined); }
+        if (!call || call.result.status !== 'accepted') { if (ep) await ep.stop(true).then(() => { endpoints.delete(ep!); }).catch(() => undefined); await rm(join(directory, id), { recursive: true, force: true }).catch(() => undefined); }
       }
     },
     async cancel(callId): Promise<CheckResult> {
@@ -153,6 +163,20 @@ export function createSipProvider(options: SipProviderOptions = {}): CallProvide
       return { ok: true, message: 'SIP 通话已停止。' };
     },
     async poll(callId): Promise<CallResult> { return calls.get(callId)?.result ?? { status: 'unknown', callId, retryable: false, message: '当前进程没有此 SIP 通话状态；不会补拨。' }; },
+    shutdown(): Promise<CheckResult> {
+      closed = true;
+      return shutdown ??= (async () => {
+        const active = [...calls.entries()].filter(([, call]) => call.result.status === 'accepted');
+        const owned = [...endpoints];
+        const results = await Promise.allSettled([
+          ...active.map(([callId, call]) => finish(call, { status: 'failed', callId, retryable: false, rawCode: 'SIP_SHUTDOWN', message: '服务退出，SIP 通话已停止。' })),
+          ...owned.map(ep => ep.stop(true)),
+        ]);
+        const ok = results.every(result => result.status === 'fulfilled');
+        if (ok) endpoints.clear();
+        return { ok, message: ok ? 'SIP 通话、准备中的连接和私密音频已停止并清理。' : '部分 SIP 资源未能完成清理，请检查本机进程。' };
+      })();
+    },
   };
   return provider;
 }

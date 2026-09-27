@@ -9,7 +9,8 @@ export function RealCalls({ mode, enabled, notifications, request, run }: Props)
     {mode === 'mock' ? <div className="soft-note"><p>当前是 Mock。所有测试均为模拟，不会拨打真实电话。</p></div> : <>
       <button className="button secondary" onClick={() => run(() => request('/real-test', {}), '真实测试已准备，尚未拨号；请审核目标后单独授权')}>准备真实测试（先审核）</button>
       <div className="warning">个人 +86 手机外呼线路尚未落实。阿里云通知一旦受理可能无法中途挂断；“紧急停止”会阻止后续电话。</div>
-      {enabled ? <button className="button secondary" onClick={() => run(() => request('/real-calls/disable', {}), '真实自动通知已停用，排队授权已撤销')}>停用真实自动通知</button> : <>
+      {enabled && <button className="button secondary" onClick={() => run(() => request('/real-calls/disable', {}), '真实自动通知已停用，排队授权已撤销')}>停用真实自动通知</button>}
+      {(!enabled || individual) && <>
         <div className="actions"><button className="button secondary" onClick={() => { setIndividual(null); setConfirmation(''); }}>授权受限自动通知</button></div>
         <p className="muted">{individual ? '你正在授权下面选中的一次真实通话。' : '自动授权只在本次运行有效；保存配置、暂停、退出或重启后失效。冷却与通数上限始终生效。'}</p>
         {individual && <div className="soft-note"><p>{notifications.find(n => n.id === individual)?.request?.text} · 目标 {notifications.find(n => n.id === individual)?.request?.to}</p></div>}

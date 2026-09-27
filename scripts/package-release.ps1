@@ -20,7 +20,7 @@ try {
   $taskNodeSource=Join-Path $taskNodeExtract 'node-v22.23.3-win-x64'
   New-Item -ItemType Directory -Path (Join-Path $taskStage 'runtime') | Out-Null
   foreach($taskFile in @('node.exe','LICENSE')) { Copy-Item -LiteralPath (Join-Path $taskNodeSource $taskFile) -Destination (Join-Path $taskStage 'runtime') }
-  foreach($taskFile in @('package.json','package-lock.json','README.md','LICENSE','SECURITY.md','THIRD_PARTY_NOTICES.md','Start.cmd','Bridge.cmd')) { Copy-Item -LiteralPath (Join-Path $taskRoot $taskFile) -Destination $taskStage }
+  foreach($taskFile in @('package.json','package-lock.json','README.md','findings.md','LICENSE','SECURITY.md','THIRD_PARTY_NOTICES.md','Start.cmd','Stop.cmd','Bridge.cmd')) { Copy-Item -LiteralPath (Join-Path $taskRoot $taskFile) -Destination $taskStage }
   foreach($taskDir in @('dist','docs')) { Copy-Item -LiteralPath (Join-Path $taskRoot $taskDir) -Destination $taskStage -Recurse }
   New-Item -ItemType Directory -Path (Join-Path $taskStage 'scripts') | Out-Null
   foreach($taskScript in @('start.ps1','stop.ps1','doctor.mjs')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $taskScript) -Destination (Join-Path $taskStage 'scripts') }

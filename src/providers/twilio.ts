@@ -7,7 +7,7 @@ export const makeTwilioClient: TwilioClientFactory = config => twilio(config.pro
 
 export function twilioStatus(status: string | undefined): CallResult {
   if (status === 'completed') return { status: 'completed', message: '通话已结束；不代表用户已理解或任务已经验收。' };
-  if (status === 'busy' || status === 'no-answer') return { status: 'failed', retryable: true, rawCode: status, message: '占线或无人接听。' };
+  if (status === 'busy' || status === 'no-answer') return { status: 'failed', retryable: false, rawCode: status, message: '占线或无人接听，已受理的通话不会自动重拨。' };
   if (status === 'failed' || status === 'canceled') return { status: 'failed', retryable: false, rawCode: status, message: '通话失败或已取消。' };
   if (['queued', 'initiated', 'ringing', 'in-progress'].includes(status ?? '')) return { status: 'accepted', message: '服务商已受理，等待通话结果。' };
   return { status: 'unknown', retryable: false, message: '服务商通话状态未知，停止自动重拨。' };
@@ -47,7 +47,7 @@ export class TwilioProvider implements CallProvider {
     if (request.to.startsWith('+86')) return { status: 'failed', retryable: false, rawCode: 'UNSUPPORTED_DESTINATION', message: 'Twilio 官方不支持中国大陆 +86 外呼。' };
     const checked = await this.check(config);
     if (!checked.ok) return { status: 'failed', retryable: false, message: checked.message };
-    if (request.decision && (!/^\d{4,12}$/.test(config.controlPin) || request.decision.options.length < 1 || request.decision.options.length > 9)) return { status: 'failed', retryable: false, message: '电话回复需要 4–12 位数字密码及 1–9 个选项。' };
+    if (request.decision && (!/^\d{6,12}$/.test(config.controlPin) || request.decision.options.length < 1 || request.decision.options.length > 9)) return { status: 'failed', retryable: false, message: '电话回复需要 6–12 位数字密码及 1–9 个选项。' };
     try {
       const call = await this.clientFactory(config).calls.create({
         to: request.to, from: config.providers.twilio.from, twiml: notificationTwiml(request, config),

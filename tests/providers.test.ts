@@ -19,7 +19,7 @@ const secret = 'fixture-only-not-a-real-secret';
 const recipient = '+15005550009'; // Twilio documented magic test range; never sent to Twilio.
 function config(): AppConfig { return {
   mode: 'mock', recipient: { countryCode: '+1', number: '5005550009', consent: true },
-  voice: { name: '', rate: 0 }, controlPin: '7531',
+  voice: { name: '', rate: 0 }, controlPin: '7531' + '09',
   notification: { enabled: true, types: ['task_completed'], cooldownSeconds: 300, maxPerHour: 3, maxPerDay: 10, stallMinutes: 10, maxRetries: 1 },
   providers: { twilio: { accountSid: sid, authToken: secret, from: '+15005550006', callbackBaseUrl: 'https://callback.example.test/bridge' }, aliyun: { accessKeyId: 'fixture-id', accessKeySecret: secret, ttsCode: 'TTS_FIXTURE', regionId: 'cn-hangzhou' }, sip: { server: '', username: '', password: '', extension: '', port: 5060, transport: 'udp', executable: '' } },
 }; }
@@ -62,10 +62,54 @@ test('Twilio rejects +86 before SDK and never independently retries unknown acce
 test('Twilio status polling and cancel use existing call without another dial', async () => {
   const sent: any[] = [];
   const provider = new TwilioProvider(() => twilio(sid, secret, { httpClient: { request: async (options: any) => { sent.push(options); return { statusCode: 200, body: JSON.stringify({ sid: callId, status: options.method === 'post' ? 'completed' : 'busy' }), headers: {} }; } } as any }));
-  assert.deepEqual((await provider.poll(callId, config())).status, 'failed');
+  const outcome = await provider.poll(callId, config());
+  assert.equal(outcome.status, 'failed'); assert.equal(outcome.retryable, false);
   assert.equal((await provider.cancel(callId, config())).ok, true);
   assert.equal(sent[1].data.Status, 'completed');
   assert.ok(sent.every(s => s.uri.endsWith(`/Calls/${callId}.json`)));
+});
+
+test('Twilio +886 reaches only the intercepted SDK; +86 remains blocked before SDK', async () => {
+  const sent: any[] = [];
+  const provider = new TwilioProvider(() => twilio(sid, secret, { autoRetry: false, httpClient: { request: async (options: any) => { sent.push(options); return { statusCode: 201, body: JSON.stringify({ sid: callId, status: 'queued' }), headers: {} }; } } as any }));
+  // Format-only synthetic destination, never sent to a real provider.
+  const taiwan = '+886' + '0'.repeat(9);
+  assert.equal((await provider.dial({ ...request(), to: taiwan }, config())).status, 'accepted');
+  assert.equal(sent.length, 1); assert.equal(sent[0].data.To, taiwan);
+  assert.equal((await provider.dial({ ...request(), to: '+86' + '1' + '0'.repeat(10) }, config())).rawCode, 'UNSUPPORTED_DESTINATION');
+  assert.equal(sent.length, 1);
+});
+
+test('accepted terminal outcomes never redial; only explicit pre-acceptance rate limit permits retry', async () => {
+  for (const status of ['busy', 'no-answer']) {
+    let calls = 0;
+    const provider = new TwilioProvider(() => ({ calls: { create: async () => { calls++; return { sid: callId, status }; } } } as any));
+    const outcome = await provider.dial(request(), config());
+    assert.equal(outcome.status, 'failed'); assert.equal(outcome.retryable, false); assert.equal(outcome.callId, callId); assert.equal(calls, 1);
+  }
+  for (const status of [429, 400, 503]) {
+    let calls = 0;
+    const provider = new TwilioProvider(() => ({ calls: { create: async () => { calls++; throw Object.assign(new Error('fixture error'), { status }); } } } as any));
+    const outcome = await provider.dial(request(), config());
+    assert.equal(outcome.retryable, status === 429); assert.equal(outcome.status, status === 503 ? 'unknown' : 'failed'); assert.equal(calls, 1);
+  }
+});
+
+test('dial and signed callback both require a 6–12 digit PIN', async () => {
+  for (const length of [4, 5, 6, 12, 13]) {
+    const cfg = config(); cfg.controlPin = '7'.repeat(length);
+    const input = { ...request(), decision: { id: 'length-fixture', question: '选择', options: [{ id: 'continue', label: '继续' }] } };
+    let calls = 0;
+    const provider = new TwilioProvider(() => ({ calls: { create: async () => { calls++; return { sid: callId, status: 'queued' }; } } } as any));
+    const valid = length >= 6 && length <= 12;
+    assert.equal((await provider.dial(input, cfg)).status, valid ? 'accepted' : 'failed'); assert.equal(calls, valid ? 1 : 0);
+    const app = await createTwilioCallbackApp({ getConfig: () => cfg, findCallById: () => ({ request: input, expiresAt: new Date(Date.now() + 60_000).toISOString(), consumed: false }), updateCall: () => {}, respondDecision: () => true });
+    try {
+      const path = '/twilio/pin'; const body = { CallSid: callId, AccountSid: sid, From: cfg.providers.twilio.from, To: recipient, Digits: cfg.controlPin };
+      const response = await app.inject({ method: 'POST', url: path, payload: new URLSearchParams(body).toString(), headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-twilio-signature': twilio.getExpectedTwilioSignature(secret, `${cfg.providers.twilio.callbackBaseUrl}${path}`, body) } });
+      assert.match(response.body, valid ? /twilio\/choice/ : /密码错误/);
+    } finally { await app.close(); }
+  }
 });
 
 test('Alibaba official SDK generates a verifiable signed request using only approved template fields', async t => {
@@ -132,6 +176,10 @@ test('callbacks require exact public URL signature, account/call/recipient bindi
   assert.equal((await post('/twilio/status', { To: '+15005550006', CallStatus: 'completed' })).statusCode, 403);
   assert.equal((await post('/twilio/status', { CallSid: `CA${'2'.repeat(32)}`, CallStatus: 'completed' })).statusCode, 403);
   assert.equal((await post('/twilio/status', { CallStatus: 'ringing', AdditionalFutureField: 'kept-for-signature' })).statusCode, 204); assert.equal(updates.length, 1);
+  for (const status of ['busy', 'no-answer']) {
+    assert.equal((await post('/twilio/status', { CallStatus: status })).statusCode, 204);
+    assert.equal(updates.at(-1)?.retryable, false);
+  }
   assert.match((await post('/twilio/choice', { Digits: '1' })).body, /回复无效/); assert.equal(choices.length, 0);
   assert.match((await post('/twilio/pin', { Digits: cfg.controlPin })).body, /twilio\/choice/);
   const result = await post('/twilio/choice', { Digits: '2' }); assert.match(result.body, /已记录/);

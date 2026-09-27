@@ -41,10 +41,17 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Remote is not an ancestor; no force push' }
   }
   # Inspect new commit + fetched history and recheck resolved URL before transfer.
+  $taskPushCommit = git rev-parse --verify HEAD
+  if ($LASTEXITCODE -ne 0 -or $taskPushCommit -cnotmatch '^[a-f0-9]{40,64}$') { throw 'Cannot pin the commit for safety inspection' }
+  $taskPushCommit = $taskPushCommit.Trim()
   node scripts/check-safe.mjs --history
   if ($LASTEXITCODE -ne 0) { throw 'Final history safety check failed; sync paused' }
+  $taskCurrentCommit = git rev-parse --verify HEAD
+  if ($LASTEXITCODE -ne 0 -or $taskCurrentCommit.Trim() -ne $taskPushCommit) { throw 'HEAD changed during safety inspection; sync paused' }
   Assert-ProjectRemote
-  git -c push.followTags=false push -u origin HEAD:main
+  # Other Git processes do not share this script's lock. Push the inspected OID,
+  # so a commit made after this check cannot silently enter the transfer.
+  git -c push.followTags=false push -u origin "${taskPushCommit}:refs/heads/main"
   if ($LASTEXITCODE -ne 0) { throw 'Push failed; preserving local work' }
 } finally {
   if ($null -ne $taskSyncLock) { $taskSyncLock.Dispose() }

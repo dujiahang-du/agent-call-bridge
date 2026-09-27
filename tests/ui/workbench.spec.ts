@@ -58,3 +58,22 @@ test('未认证请求被拒绝，敏感配置不进入页面', async ({ page, re
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
+test('SIP 无手机号配置可保存，准备真实测试保持零次拨号', async ({ page, request }) => {
+  const skip=page.getByRole('button', { name: '稍后配置，进入工作台' }); if(await skip.isVisible())await skip.click();
+  const connection=JSON.parse(readFileSync(join(process.env.ACB_UI_TEST_DIR!, 'connection.json'), 'utf8'));
+  const headers={Authorization:`Bearer ${connection.token}`};
+  await page.getByRole('button',{name:'通话设置',exact:true}).click();
+  await page.getByRole('combobox',{name:'电话服务',exact:true}).selectOption('sip');
+  await page.getByLabel('SIP 服务器',{exact:true}).fill('127.0.0.1');
+  await page.getByLabel('目标分机 / SIP 地址',{exact:true}).fill('fixture');
+  await page.getByRole('button',{name:'保存设置',exact:true}).click();
+  await expect(page.getByRole('status')).toContainText('设置已保存');
+  await page.getByRole('button',{name:'准备真实测试（先审核）',exact:true}).click();
+  await expect(page.getByRole('status')).toContainText('尚未拨号');
+  await page.getByRole('button',{name:'审核这次通话',exact:true}).click();
+  await expect(page.getByRole('button',{name:'确认并拨打这一次',exact:true})).toBeDisabled();
+  const records=await (await request.get('/api/notifications',{headers})).json();
+  const prepared=records.find((n:any)=>n.taskId==='real-test');
+  expect(prepared.status).toBe('awaiting_authorization'); expect(prepared.attempts).toBe(0);
+  const restore=await request.put('/api/config',{headers,data:{mode:'mock'}}); expect(restore.ok()).toBeTruthy();
+});

@@ -136,3 +136,37 @@ test('sync exclusive lock refuses concurrent execution', { skip: process.platfor
     assert.notEqual(result.status, 0); assert.match(result.stderr, /Another project sync is running/);
   } finally { f.close(); }
 });
+
+test('sync pins inspected OID even if another Git process commits immediately after HEAD check', { skip: process.platform !== 'win32' }, () => {
+  const f = fixture();
+  try {
+    f.put('README.md', 'safe checkpoint'); f.commit(); const inspected = f.git('rev-parse', 'HEAD');
+    mkdirSync(join(f.dir, 'scripts'));
+    for (const name of ['safe-sync.ps1', 'check-safe.mjs']) copyFileSync(join(project, 'scripts', name), join(f.dir, 'scripts', name));
+    f.git('remote', 'add', 'origin', 'https://github.com/dujiahang-du/agent-call-bridge');
+    const quote = (v: string) => "'" + v.replaceAll("'", "''") + "'";
+    // Only the fixture's git transport is intercepted; no remote is contacted.
+    // Simulate a concurrent commit after rev-parse returns the inspected OID.
+    const command = `
+$global:fixtureGitExecutable=(Get-Command git.exe).Source
+$global:fixtureHeadChecks=0
+function git {
+  if ($args[0] -eq 'fetch') { $global:LASTEXITCODE=0; return }
+  if ($args -contains 'push') { ConvertTo-Json -InputObject @($args) | Set-Content -LiteralPath ${quote(join(f.dir, 'push-args.json'))}; $global:LASTEXITCODE=0; return }
+  if ($args[0] -eq 'rev-parse' -and $args[1] -eq '--verify' -and $args[2] -eq 'HEAD') {
+    $global:fixtureHeadChecks++
+    $observed=& $global:fixtureGitExecutable @args
+    if ($global:fixtureHeadChecks -eq 2) { & $global:fixtureGitExecutable -c ${quote('core.hooksPath=' + join(f.dir, 'no-hooks'))} commit --allow-empty -qm 'concurrent fixture commit' }
+    $global:LASTEXITCODE=0; return $observed
+  }
+  & $global:fixtureGitExecutable @args
+}
+& ${quote(join(f.dir, 'scripts/safe-sync.ps1'))}
+`;
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { cwd: f.dir, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    const args: string[] = JSON.parse(readFileSync(join(f.dir, 'push-args.json'), 'utf8').replace(/^\uFEFF/, ''));
+    assert.ok(args.includes(`${inspected}:refs/heads/main`)); assert.ok(!args.includes('HEAD:main'));
+    assert.notEqual(f.git('rev-parse', 'HEAD'), inspected);
+  } finally { f.close(); }
+});

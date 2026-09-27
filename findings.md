@@ -13,7 +13,7 @@ TypeScript / Fastify 5 / React 19 / Vite 8 / Node SQLite。Windows 系统中文 
 - 参考 OpenClaw voice-call（MIT）：https://github.com/openclaw/openclaw/blob/main/docs/plugins/voice-call.md 。不复制 ZeframLou/call-me（README 与完整许可文本不一致）或 sidinsearch/AgentCall（NOTICE 承认未授权上游代码）；不选附额外限制的 SIPSorcery。
 - baresip BSD-3-Clause，v4.11.0，Windows 源码可构建，无官方完整 Windows 便携 release：https://github.com/baresip/baresip 。本机 MSVC 19.44/CMake 3.31.6/Windows SDK 已实际核实，不需系统安装。软件测试应含 SIP、RTP有效音频、DTMF、BYE，不能仅 OPTIONS。
 - Node 22.23.3 官方 Windows x64 便携包及校验：https://nodejs.org/download/release/latest-v22.x/SHASUMS256.txt 。node:sqlite 在22仍实验性，存储层隔离并测试。
-- Windows DPAPI CurrentUser 内存往返已验证，不写文件；换电脑需重新填写凭据并登录，不复制认证。默认导出仅非敏感设置。
+- Windows DPAPI CurrentUser 已验证；换电脑需重新填写凭据并登录，不复制认证。本期没有凭据导出或跨电脑迁移功能。
 
 ## 费用及阻塞
 没有已核实的个人 +86 云外呼路线。Twilio 非 +86 需号码/地区权限/计费条件与HTTPS回调；阿里云需合格企业+模板审核。真实拨号与新付费模型调用需单独授权。SIP运营商/ATA/NAT等待实测。

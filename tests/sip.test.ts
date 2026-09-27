@@ -78,3 +78,19 @@ test('SIP provider fails closed without TTS and cannot cancel or recover another
   assert.equal((await provider.cancel('other-process-call', defaults)).ok, false);
   assert.equal((await provider.poll!('other-process-call', defaults, new Date().toISOString())).status, 'unknown');
 });
+
+test('SIP shutdown blocks a delayed TTS result from creating an endpoint or dialing', async () => {
+  const directory = resolve('.local/sip-tests', randomUUID());
+  let release!: (audio: Buffer) => void;
+  const config = structuredClone(defaults);
+  Object.assign(config.providers.sip, { server: '127.0.0.1', username: 'alice', extension: 'bob' });
+  const provider = createSipProvider({ dataDir: directory, synthesize: () => new Promise(resolve => { release = resolve; }) });
+  const request = { notificationId: 'n', taskId: 't', eventId: 'e', to: 'unused', text: '测试' };
+  const dialing = provider.dial(request, config);
+  assert.equal((await provider.shutdown!()).ok, true);
+  release(Buffer.alloc(0));
+  assert.equal((await dialing).rawCode, 'SIP_SHUTDOWN');
+  assert.equal((await provider.dial(request, config)).rawCode, 'SIP_SHUTDOWN');
+  assert.equal((await provider.shutdown!()).ok, true, 'shutdown is idempotent');
+  await assert.rejects(import('node:fs/promises').then(fs => fs.access(directory)), { code: 'ENOENT' });
+});

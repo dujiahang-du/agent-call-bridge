@@ -52,7 +52,7 @@ export async function createTwilioCallbackApp(context: TwilioCallbackContext) {
       if (path === '/twilio/pin') {
         if (pinAttempts.has(callId)) return ended('本次密码验证已处理。');
         pinAttempts.set(callId, expiry);
-        if (!/^\d{4,12}$/.test(config.controlPin) || !/^\d{4,12}$/.test(body.Digits ?? '') || !equalPin(body.Digits, config.controlPin)) return ended('密码错误，本次通话结束。');
+        if (!/^\d{6,12}$/.test(config.controlPin) || !/^\d{6,12}$/.test(body.Digits ?? '') || !equalPin(body.Digits, config.controlPin)) return ended('密码错误，本次通话结束。');
         verified.set(callId, { until: Math.min(expiry, now() + 120_000), pin: config.controlPin, decisionId: decision.id });
         const xml = new twilio.twiml.VoiceResponse();
         const gather = xml.gather({ input: ['dtmf'], numDigits: 1, timeout: 12, action: `${base}/twilio/choice`, method: 'POST' });

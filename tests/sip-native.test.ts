@@ -123,7 +123,10 @@ test('native SIP provider: Chinese TTS reaches software endpoint; cancel and rea
   const proxyPort = proxy.address().port;
   let caller: { port: number; address: string } | undefined;
   let inviteCount = 0;
-  proxy.on('message', (bytes, peer) => {
+  let proxyClosed = false;
+  // Control acceptance and UDP delivery are independent. Exercise delayed network delivery explicitly.
+  proxy.on('message', (bytes, peer) => { setTimeout(() => {
+    if (proxyClosed) return;
     const message = bytes.toString();
     const header = (name: string) => message.match(new RegExp(`^${name}:\\s*(.+)$`, 'mi'))?.[1]?.trim() ?? '';
     if (message.startsWith('REGISTER ')) {
@@ -138,7 +141,7 @@ test('native SIP provider: Chinese TTS reaches software endpoint; cancel and rea
       const forwarded = `${message.slice(0, firstLine + 2)}Via: SIP/2.0/UDP 127.0.0.1:${proxyPort};branch=z9hG4bK-acb-${header('CSeq').split(' ')[0]}\r\n${message.slice(firstLine + 2)}`;
       proxy.send(forwarded, receiver.sipPort, '127.0.0.1');
     }
-  });
+  }, 60); });
   const config = structuredClone(defaults);
   Object.assign(config.providers.sip, { server: '127.0.0.1', port: proxyPort, username: 'caller', password: '', extension: 'receiver', transport: 'udp', executable });
   const provider = createSipProvider({ dataDir: base, synthesize: synthesizeTelephony, setupTimeoutMs: 7000 });
@@ -147,8 +150,9 @@ test('native SIP provider: Chinese TTS reaches software endpoint; cancel and rea
     await receiver.start();
     const result = await provider.dial({ notificationId: 'local-test', eventId: 'synthetic-event', taskId: 'synthetic-task', to: 'unused', text: '这是一条本地测试汇报。语音已经生成，正在验证通话。' }, config);
     assert.equal(result.status, 'accepted', result.message); callId = result.callId!;
-    assert.ok(callId); assert.equal(inviteCount, 1);
+    assert.ok(callId);
     await receiver.control.waitFor(event => event.type === 'CALL_ESTABLISHED');
+    assert.equal(inviteCount, 1, 'one real INVITE has reached the peer after establishment');
     await new Promise(resolve => setTimeout(resolve, 1200));
     const canceled = await provider.cancel(callId, config); assert.equal(canceled.ok, true);
     assert.equal((await provider.poll!(callId, config, new Date().toISOString())).status, 'failed');
@@ -169,8 +173,40 @@ test('native SIP provider: Chinese TTS reaches software endpoint; cancel and rea
     }
     assert.equal(completed.status, 'completed', 'completion requires the native end-of-file event');
     assert.equal(inviteCount, 2, 'exactly one INVITE per requested call');
-  } catch (error) { throw new Error(`${String(error)}\nReceiver: ${receiver.diagnostics}`); }
-  finally { if (callId) await provider.cancel(callId, config); await receiver.stop(); proxy.close(); await rm(base, { recursive: true, force: true }); }
+    const earlierCalls = new Set(receiver.control.events.filter(event => event.type === 'CALL_ESTABLISHED').map(event => event.id));
+    const third = await provider.dial({ notificationId: 'local-shutdown', eventId: 'shutdown-synthetic-event', taskId: 'synthetic-task', to: 'unused', text: '服务退出测试，正在验证已接通的通话能够被关闭。' }, config);
+    assert.equal(third.status, 'accepted', third.message); callId = third.callId!;
+    const activeEvent = await receiver.control.waitFor(event => event.type === 'CALL_ESTABLISHED' && !earlierCalls.has(event.id));
+    assert.equal((await provider.shutdown!()).ok, true);
+    await receiver.control.waitFor(event => event.type === 'CALL_CLOSED' && event.id === activeEvent.id);
+    assert.equal((await provider.poll!(callId, config, new Date().toISOString())).rawCode, 'SIP_SHUTDOWN');
+    assert.equal(inviteCount, 3);
+    assert.deepEqual(await readdir(join(base, 'sip')), [], 'shutdown removes owned private audio/config directories');
+  } catch (error) { throw new Error(`${error instanceof Error ? error.stack : String(error)}\nReceiver: ${receiver.diagnostics}`); }
+  finally { if (callId) await provider.cancel(callId, config); await receiver.stop(); proxyClosed = true; proxy.close(); await rm(base, { recursive: true, force: true }); }
+});
+
+test('native SIP shutdown settles in-progress endpoint startup and pending registration without dialing', nativeOptions, async () => {
+  const base = resolve('.local/sip-tests', randomUUID());
+  const startup = new SipEndpoint({ executable, directory: join(base, 'starting'), username: 'starting' });
+  const starting = startup.start().catch(() => undefined);
+  await startup.stop(true); await starting;
+  assert.ok(!startup.process?.pid || startup.process.exitCode !== null || startup.process.signalCode !== null, 'no subprocess survives startup cancellation');
+  const registrar = createSocket('udp4');
+  await new Promise<void>(resolve => registrar.bind(0, '127.0.0.1', resolve));
+  let invites = 0;
+  const registered = new Promise<void>(resolve => registrar.on('message', bytes => { if (bytes.toString().startsWith('REGISTER ')) resolve(); if (bytes.toString().startsWith('INVITE ')) invites++; }));
+  const config = structuredClone(defaults);
+  Object.assign(config.providers.sip, { server: '127.0.0.1', port: registrar.address().port, username: 'caller', extension: 'receiver', executable });
+  const provider = createSipProvider({ dataDir: base, synthesize: async () => tone(), setupTimeoutMs: 10000 });
+  try {
+    const dialing = provider.dial({ notificationId: 'shutdown', eventId: 'shutdown', taskId: 'shutdown', to: 'unused', text: '合成测试音' }, config);
+    await registered;
+    assert.equal((await provider.shutdown!()).ok, true);
+    const result = await dialing;
+    assert.equal(result.status, 'failed'); assert.equal(invites, 0);
+    assert.deepEqual(await readdir(join(base, 'sip')), [], 'preparing registration and its audio are removed');
+  } finally { await provider.shutdown!(); registrar.close(); await rm(base, { recursive: true, force: true }); }
 });
 
 test('native SIP: unaccepted ringing call is canceled with no second attempt', nativeOptions, async () => {
