@@ -1,5 +1,7 @@
 # 交付与恢复状态
 
+最新界面版本 v0.1.1 已发布：https://github.com/dujiahang-du/agent-call-bridge/releases/tag/v0.1.1 。代码标签4ddcc30，雾白/海军蓝配色、字号层次、移动底部导航与记录卡片；授权按钮加入忙碌保护。类型/构建、浏览器5/5、独立Review、便携包34/34通过。新包SHA256为6fd729ffcfe46e299cb3fe1ee4ee7cb566a0aac263c22eebd2ccc7fefe082510，与GitHub一致。此次未重跑下文v0.1.0后端61项，也未真实拨号；UI和包原始证据留.local，已保存新版公开脱敏截图。以下为首版交付基线。
+
 2026-09-27，本次可自主软件范围已完成。仓库先 Private 开发；安全检查、独立 Review 和软件验收后已转 Public：
 https://github.com/dujiahang-du/agent-call-bridge
 
