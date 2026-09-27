@@ -1,15 +1,23 @@
-# 进度与恢复
+# 交付与恢复状态
 
-2026-09-27：计划已确认，已进入执行模式并设定持续目标。最新仓库授权为先 Private，验收及安全检查后 Public。当前仅完成调研和环境检查；尚未声称任何通话、软件测试或发行包通过。
+2026-09-27，本次可自主软件范围已完成。仓库先 Private 开发；安全检查、独立 Review 和软件验收后已转 Public：
+https://github.com/dujiahang-du/agent-call-bridge
 
-已建立独立 Private 仓库并安全推送初始检查点。后端、CLI/MCP、UI和真实provider适配已开始落盘；SIP固定源码本机原生编译成功，尚在软件链路测试。
+v0.1.0 预发布已发布，代码标签指向 73dada5；后续主分支仅补充交付记录：
+https://github.com/dujiahang-du/agent-call-bridge/releases/tag/v0.1.0
 
-依赖首次审计发现 @fastify/static 8 的公开漏洞，已升级兼容 Fastify5 的 10.1.5。第一次前端构建发现不必要的CSS data import被构建器当作文件路径，已删除；待重建。
+## 实际证据
+- 类型检查、生产构建通过；后端等61/61、浏览器5/5、便携包31/31通过，无跳过。
+- 真实现有Codex子任务→Bridge→Mock→界面答复→同一等待任务继续生成文件并汇报；本条中文试听约15.27秒。不是固定事件脚本。
+- MCP stdio真实连接，隔离Codex app-server握手；没有模型推理。SIP中文音频、注册、RTP/DTMF/BYE和停止完成本机软件验证。
+- 独立Review问题均修复复验；完整历史和候选扫描零凭据发现，生产依赖审计零已知漏洞。按检查点安全提交推送，没有安装永久定时备份任务。
+- 随包Node22.23.3，在移除测试进程PATH中系统Node/npm后启动、保存、重启、Mock、退出通过。换电脑仍需重新配置凭据与登录；未做第二台实机测试。
+- 发行ZIP SHA256：2463444dac06ccf419222d3e376ddd069be54f8ea709fbefe1a212b55179936a，与GitHub资产digest一致。准确本机路径见忽略的.local/release-manifest.json。
 
-真实现有Codex子任务读取交付文件→Bridge report-and-wait→Mock UI选择→原任务继续写校验报告→完成上报已通过；本条中文试听约15.27秒，浏览器无异常。证据仅保存在.local，不公开真实thread/session标识。MCP stdio列出5个tool并真实ping通过；Codex0.144.5隔离app-server握手通过，无模型调用。
+## 确实剩余的事项
+个人+86线路未落实；无真实手机拨号、云线路、公网回调、ATA实测。按docs/USER_GUIDE.md集中补齐资质/账号/参数，首次真实拨号仍需本人另行明确授权。完整托管界面、SIP任务按键、自由语音交流属于后续版本。
 
-UI自动化4/4通过；电话SDK8项契约通过；核心20项及SIP10项阶段测试通过；安全扫描12项通过。发行首包已构建，但旧包在修复过程中，不可发布。独立审查发现的鉴权、轮询、幂等、授权撤销缺陷均有修复回归；正在补优雅停服与最终复审。
+首次SIP调试曾意外生成用户profile默认config/accounts，自动审批拒绝精确清理（blocked by policy），未绕过；已改专属工作目录并通过隔离回归。两份文件的本机路径/哈希见.local/sip-initial-launch-incident.json，清理需用户本人处理。
 
-SIP首调试意外在用户profile生成空config/accounts，自动审批拒绝精确清理（blocked by policy），未绕过。后续cwd专用启动器及profile前后不变测试已修复回归。此本机清理待用户处理，路径和证据在.local/sip-initial-launch-incident.json。
-
-下一步：完成停服/打包复审，运行最终完整测试与发行包隔离依赖验证，安全提交推送后Public+预发布Release。无真实云电话、无新增付费模型请求。不要重跑研究。
+## 恢复入口
+先读task_plan.md、findings.md、本页与docs/VALIDATION.md，再看git status。不要重新调研或重做已验证环节。原始实际任务、浏览器和便携包证据仅留.local，不上传真实thread/session、机密、数据库或录音。没有授权继续执行真实收费测试，也不承诺会话结束后自动开发。
