@@ -48,6 +48,31 @@ test('pushplus local checks never contact network; remote check only reads the b
   for (const entry of f.seen) assert.ok(!entry.url.href.includes(token) && !entry.url.href.includes(secret));
 });
 
+test('pushplus account checks distinguish API authorization, IP and token failures without leaking raw responses', async () => {
+  for (const [code, explanation] of [[401, /开放接口未授权/], [403, /出口 IP 未获授权/], [903, /用户 Token 无效/], [900, /停止重复核对/], [500, /平台系统异常/], [600, /数据异常/], [999, /不能单独确定/], [302, /未登录/], [805, /无权查看/], [888, /积分不足/], [905, /实名认证/], [777, /平台未完成账号核对/]] as const) {
+    const f = fixture(x => x.url.pathname === paths.access ? response({ code, msg: `${token} ${secret} ${phone}`, data: null }) : undefined);
+    const result = await new PushplusProvider(f.fetcher).check(config(), { remote: true });
+    assert.equal(result.ok, false); assert.match(result.message, explanation); assert.ok(result.message.includes(String(code)));
+    assert.deepEqual(f.seen.map(x => x.url.pathname), [paths.access]);
+    for (const value of [token, secret, phone]) assert.ok(!result.message.includes(value));
+  }
+  const f = fixture(x => x.url.pathname === paths.account ? response({ code: 403, msg: secret }) : undefined);
+  assert.match((await new PushplusProvider(f.fetcher).check(config(), { remote: true })).message, /出口 IP 未获授权/);
+  assert.deepEqual(f.seen.map(x => x.url.pathname), [paths.access, paths.account]);
+});
+
+test('pushplus network and HTTP failures are not mistaken for business IP rejection', async () => {
+  const http = fixture(() => response({ code: 403, msg: secret }, 403));
+  const result = await new PushplusProvider(http.fetcher).check(config(), { remote: true });
+  assert.equal(result.ok, false); assert.match(result.message, /HTTP 403/); assert.doesNotMatch(result.message, /出口 IP 未获授权/);
+  const timeout = fixture(() => { throw new DOMException(secret, 'TimeoutError'); });
+  const timed = await new PushplusProvider(timeout.fetcher).check(config(), { remote: true });
+  assert.match(timed.message, /连接超时/); assert.doesNotMatch(timed.message, /SecretKey|返回 403|出口 IP 未获授权/); assert.ok(!timed.message.includes(secret));
+  const network = fixture(() => { throw new TypeError(token); });
+  assert.match((await new PushplusProvider(network.fetcher).check(config(), { remote: true })).message, /尚未取得平台返回码/);
+  for (const f of [http, timeout, network]) assert.deepEqual(f.seen.map(x => x.url.pathname), [paths.access]);
+});
+
 test('pushplus fails closed for masked/mismatched account, phone, identity, or points', async () => {
   for (const patch of [
     { token: 'fixture-other-token' }, { phoneNumber: '1********00' }, { phoneNumber: '1' + '1'.repeat(10) },

@@ -9,6 +9,7 @@ const guides: Record<Exclude<ProviderId, 'mock'>, Guide> = {
     links: [
       ['登录 / 注册 pushplus', 'https://www.pushplus.plus/login.html'],
       ['个人实名认证', 'https://pushplus.plus/doc/function/verify.html'],
+      ['打开开发设置', 'https://www.pushplus.plus/uc-dev.html'],
       ['语音渠道与费用', 'https://www.pushplus.plus/doc/channel/voice.html'],
       ['开放接口设置说明', 'https://www.pushplus.plus/doc/guide/openApi.html'],
     ],

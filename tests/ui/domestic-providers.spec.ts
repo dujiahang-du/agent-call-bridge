@@ -39,6 +39,7 @@ test('国内服务顺序、申请边界、安全链接和手机窄屏', async ({
   await expect(help).toContainText('默认预处理 / 消息规则');
   await expect(help).toContainText('真实开通与拨号待验证');
   await expect(help.getByRole('link', { name: '开放接口设置说明', exact: true })).toHaveAttribute('href', 'https://www.pushplus.plus/doc/guide/openApi.html');
+  await expect(help.getByRole('link', { name: '打开开发设置', exact: true })).toHaveAttribute('href', 'https://www.pushplus.plus/uc-dev.html');
   await expect(page.getByRole('combobox', { name: '区号', exact: true })).toBeDisabled();
   await expect(page.getByRole('combobox', { name: '区号', exact: true })).toHaveValue('+86');
   await expect(page.getByText('这是我在 pushplus 实名绑定并同意接听的本人手机', { exact: true })).toBeVisible();
@@ -91,7 +92,7 @@ test('pushplus 账号核对先保存，只在点击后请求；失败显示错�
   await page.route('**/api/pushplus/account-check', async route => {
     accountChecks++; order.push('account-check');
     expect(route.request().postDataJSON()).toEqual({ confirmation: '只核对pushplus绑定账号，不拨号' });
-    await route.fulfill({ status: 200, json: { ok: !shouldFail, message: shouldFail ? '模拟账号资料不可核对，未拨号' : '模拟账号核对完成，未拨号' } });
+    await route.fulfill({ status: 200, json: { ok: !shouldFail, message: shouldFail ? 'pushplus 返回 403：当前请求的出口 IP 未获授权。未发起电话。' : '模拟账号核对完成，未拨号' } });
   });
   await page.getByRole('combobox', { name: '电话服务', exact: true }).selectOption('pushplus');
   await page.getByRole('button', { name: '检查配置与本地连接', exact: true }).click();
@@ -106,7 +107,7 @@ test('pushplus 账号核对先保存，只在点击后请求；失败显示错�
   expect(order).toEqual(['save', 'account-check']);
   shouldFail = true;
   await page.getByRole('button', { name: '核对 pushplus 绑定账号（不拨号）', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('模拟账号资料不可核对，未拨号');
+  await expect(page.getByRole('alert')).toContainText('pushplus 返回 403：当前请求的出口 IP 未获授权。未发起电话。');
   expect(accountChecks).toBe(2);
   expect(await (await request.get('/api/notifications', { headers: headers() })).json()).toEqual(before);
   expect((await (await request.get('/api/status', { headers: headers() })).json()).realCallsEnabled).toBe(false);

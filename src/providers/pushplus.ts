@@ -9,6 +9,31 @@ export type PushplusFetch = (url: string, init: RequestInit) => Promise<Response
 class RequestFailure extends Error {
   constructor(readonly code: string, readonly definiteRejection = false) { super(code); }
 }
+function accountFailureMessage(error: unknown): string {
+  // 只展示官方返回码对应的固定说明，不回显可能含凭据、号码或 IP 的原始消息。
+  const messages: Record<string, string> = {
+    API_302: 'pushplus 返回 302：平台报告未登录，请在官网核对账号与开发设置。',
+    API_401: 'pushplus 返回 401：开放接口未授权。请在官网开发设置的“开放接口”一行点击修改，勾选启用并确认。',
+    API_403: 'pushplus 返回 403：当前请求的出口 IP 未获授权。请核对官网“安全 IP 地址”；代理分流时，其他查 IP 网站的结果可能与 pushplus 看到的不同。多个 IP 使用英文分号分隔。',
+    API_903: 'pushplus 返回 903：用户 Token 无效。请复制官网开发设置中的用户 Token，不使用消息 Token。',
+    API_900: 'pushplus 返回 900：账号使用受限。请停止重复核对，并在官网查看限制原因。',
+    API_500: 'pushplus 返回 500：平台系统异常，请稍后由你手动重试。',
+    API_805: 'pushplus 返回 805：账号无权查看所请求的资料，请在官网核对权限。',
+    API_888: 'pushplus 返回 888：账号积分不足，请在官网核对余额与费用。',
+    API_905: 'pushplus 返回 905：账号尚未完成实名认证，请在官网核对认证状态。',
+    API_600: 'pushplus 返回 600：平台报告数据异常。请核对同一账号的用户 Token、SecretKey 和开发设置。',
+    API_999: 'pushplus 返回 999：平台验证未通过。请核对同一账号的用户 Token、SecretKey 和开发设置；此返回码不能单独确定哪一项有误。',
+  };
+  let message: string;
+  if (error instanceof RequestFailure && messages[error.code]) message = messages[error.code];
+  else if (error instanceof RequestFailure && /^API_[1-9]\d{2,3}$/.test(error.code)) message = `pushplus 返回 ${error.code.slice(4)}：平台未完成账号核对，请在官网核对账号状态与开发设置。`;
+  else if (error instanceof RequestFailure && /^HTTP_\d{3}$/.test(error.code)) message = `pushplus 连接返回 HTTP ${error.code.slice(5)}，未取得有效的账号核对结果；这与平台 JSON 返回码不同，请检查连接或平台服务。`;
+  else if (error instanceof RequestFailure || error instanceof SyntaxError) message = 'pushplus 返回内容不符合账号接口约定，无法确认账号；请检查平台状态或联系维护者。';
+  else if (error instanceof Error && error.name === 'TimeoutError') message = 'pushplus 账号核对连接超时。请检查本机到平台的网络连接；超时本身不能证明白名单有误。';
+  else if (error instanceof Error && error.name === 'AbortError') message = 'pushplus 账号核对请求已中止。';
+  else message = '无法连接 pushplus 账号接口，请检查本机网络、代理或证书；尚未取得平台返回码。';
+  return `${message} 未发起电话。`;
+}
 const object = (value: unknown): value is Json => !!value && typeof value === 'object' && !Array.isArray(value);
 const credential = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 512 && !/[\s\u0000-\u001f\u007f]/.test(value);
 const mainlandPhone = (value: unknown): string | undefined => {
@@ -78,7 +103,8 @@ export class PushplusProvider implements CallProvider {
     const promise = (async () => {
       const body = await this.json(paths.access, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: p.token, secretKey: p.secretKey }) }, signal);
       signal?.throwIfAborted();
-      if (body.code !== 200 || !object(body.data)) throw new RequestFailure('ACCESS_DENIED', true);
+      if (body.code !== 200) throw new RequestFailure(`API_${body.code}`, true);
+      if (!object(body.data)) throw new RequestFailure('INVALID_ACCESS_RESPONSE');
       const { accessKey, expiresIn } = body.data;
       if (!credential(accessKey) || typeof expiresIn !== 'number' || !Number.isFinite(expiresIn) || expiresIn <= 0) throw new RequestFailure('INVALID_ACCESS_RESPONSE');
       if (this.pending?.identity === identity) this.cache = { identity, accessKey, expiresAt: this.now() + Math.max(0, Math.min(expiresIn, 7200) - 60) * 1000 };
@@ -91,7 +117,7 @@ export class PushplusProvider implements CallProvider {
   private async verifyAccount(config: AppConfig, signal?: AbortSignal): Promise<CheckResult> {
     const key = await this.access(config, signal); signal?.throwIfAborted();
     const body = await this.json(paths.account, { method: 'GET', headers: { 'access-key': key } }, signal); signal?.throwIfAborted();
-    if (body.code !== 200 || !object(body.data)) { this.cache = undefined; return { ok: false, message: '账号资料查询失败；请核对开放接口、secretKey 和出口 IP 白名单。未发起电话。' }; }
+    if (body.code !== 200 || !object(body.data)) { this.cache = undefined; throw new RequestFailure(body.code !== 200 ? `API_${body.code}` : 'INVALID_ACCOUNT_RESPONSE'); }
     const info = body.data;
     if (info.token !== config.providers.pushplus.token) return { ok: false, message: '无法确认资料所属账号与用户 token 一致，未发起电话。' };
     const bound = mainlandPhone(info.phoneNumber);
@@ -106,7 +132,7 @@ export class PushplusProvider implements CallProvider {
     const local = this.localCheck(config);
     if (!local.ok || !options.remote) return local;
     try { return await this.verifyAccount(config); }
-    catch { return { ok: false, message: 'pushplus 账号只读核对失败或超时；请核对开放接口与出口 IP 白名单。未发起电话。' }; }
+    catch (error) { return { ok: false, message: accountFailureMessage(error) }; }
   }
 
   async dial(request: CallRequest, config: AppConfig, options: { signal?: AbortSignal } = {}): Promise<CallResult> {
