@@ -18,7 +18,7 @@ TypeScript / Fastify 5 / React 19 / Vite 8 / Node SQLite。Windows 系统中文 
 ## 费用及阻塞
 2026-09-27 申请入口补核：Twilio https://www.twilio.com/try-twilio 当前转至官方认证页，试用条件见 https://www.twilio.com/docs/usage/trials 。阿里云企业资质官方文档链接至 https://dyvms.console.aliyun.com/dyvms.htm （控制台需登录，未核验账号实际开通）；模板申请见 https://help.aliyun.com/zh/vms/user-guide/create-a-text-to-speech-template 。界面只展示固定外链，不附带本机号码、凭据或token，不自动注册或充值。
 
-没有已核实的个人 +86 云外呼路线。Twilio 非 +86 需号码/地区权限/计费条件与HTTPS回调；阿里云需合格企业+模板审核。真实拨号与新付费模型调用需单独授权。SIP运营商/ATA/NAT等待实测。
+没有已完成个人账号开通及真实 +86 拨号验证的云线路。pushplus 现行文档提供个人实名和电话标题通知，列优先试验候选，未接入项目。Twilio 非 +86 需号码/地区权限/计费条件与HTTPS回调；阿里云需合格企业+模板审核。真实拨号与新付费模型调用需单独授权。SIP运营商/ATA/NAT等待实测。
 # v0.1.3 控制台生命周期补充
 
 启动器持有独立 Windows Job（`KILL_ON_JOB_CLOSE`），服务先等待私有 stdin 启动信号，分配入 Job 后才导入后端；浏览器不属于该 Job。关闭黑窗口先通过 stdin 请求停服，3秒后清理本次进程树。这样不依赖 PowerShell `finally` 在窗口被强制关闭时执行，也不按进程名称批量结束程序。
@@ -27,4 +27,6 @@ TypeScript / Fastify 5 / React 19 / Vite 8 / Node SQLite。Windows 系统中文 
 
 ## 个人 +86 路线补核
 
-2026-09-27：目标明确为原生 +86 手机号码接听，不采用 App 来电替代。Zadarma 官方个人账户及中国手机 US$0.70/分钟资费可证，但大陆个人开户、自动通知用途和实际目的地放行仍待平台确认；不是已落实线路。VoIP.ms 当前条款排除 China。可选自有固话+FXO路线需运营商同意及硬件实测。集中证据与客服问题见 [个人线路候选](docs/personal-86-options.md)，不再重复全平台调研。
+2026-09-27：目标明确为原生 +86 手机号码接听，不采用 App 来电替代。国内补查发现 pushplus 公开个人实名流程及 voice 电话渠道，0.30 元/次、只读标题，普通实名标题上限100字；官方提醒接通失败概率较大。列为国内优先试验候选，尚未接入/认证/真实拨通，也无已核实双向控制。互亿 FAQ 明确企业限定；容联个人账号不证明语音通知开通；腾讯 VMS 停止新购月功能费。独立复核支持上述边界。
+
+Zadarma 官方个人账户及中国手机 US$0.70/分钟资费可证，但大陆个人开户、自动通知用途和实际目的地放行仍待平台确认；作为海外备选，不是已落实线路。VoIP.ms 当前条款排除 China。可选自有固话+FXO路线需运营商同意及硬件实测。集中官方证据、申请入口与剩余问题见 [个人线路候选](docs/personal-86-options.md)，不再重复全平台调研。

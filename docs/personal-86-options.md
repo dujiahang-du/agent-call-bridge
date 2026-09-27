@@ -6,7 +6,31 @@
 
 [官方企业资质要求](https://help.aliyun.com/zh/vms/user-guide/enterprise-qualification-management)明确不接受个人用户，个体工商户、自然人独资企业和个人独资公司也在不支持范围。语音业务资质审核是运营商的入网要求，独立于账号实名认证；改程序或换 Key 无法解决。已有合格企业也必须经过语音资质、场景和模板审核。
 
-## 优先核实的云线路：Zadarma
+## 国内优先试验候选：pushplus（推送加）
+
+官方公开条件目前最贴近个人自用，但**项目尚未接入此渠道，也没有完成账号认证和真实拨号验证**。
+
+- [实名认证说明](https://pushplus.plus/doc/function/verify.html)提供个人姓名、身份证、本人实名手机号及短信验证码流程，未要求企业材料。发送与充值前必须实名；认证每次收费，具体金额需本人在付款页核对。
+- [语音渠道说明](https://www.pushplus.plus/doc/channel/voice.html)明确主动拨打绑定手机号，接听后只读消息标题，不读正文。官网可绑定手机号，接听不需额外安装 App；这与本项目简短中文通知的方向匹配。
+- 通话每次 30 积分，即人民币 0.30 元；未接通等渠道失败按文档退还积分，可能延迟。官方明确提醒接通失败概率较大，可能被手机或运营商拦截；22:00 至次日 08:00 有更严格连续呼叫限制。
+- [系统额度](https://www.pushplus.plus/doc/guide/use.html)列普通实名用户标题上限 100 字。宜播报简短状态；未核实双向语音、按键回复、长报告或全部 +86 号段保障。
+- [消息 API](https://www.pushplus.plus/doc/guide/api.html)有 voice 渠道。后续适配仅使用默认本人通知，不设置群组或好友接收参数，并保留 Bridge 去重/限频/单次授权；提交成功不能当作已接听。
+
+本人办理入口：[官网登录](https://www.pushplus.plus/login.html) → 个人中心 → 实名及绑定手机。先查看当前语音渠道与费用，再决定是否付费；不要把身份证或 token 发到聊天。本次仅查公开文档，没有注册、认证、充值或真实呼叫；以后首次真实测试仍需单独授权。
+
+## 其他国内平台的筛选结果
+
+| 平台 | 个人使用结论与官方依据 |
+| --- | --- |
+| 互亿无线 | [语音发送 FAQ](https://m.ihuyi.com/doc/voice/vm/faq_send.html)明确个人不可开通、仅企业实名；不要仅凭旧推广页称个人可用。 |
+| 腾讯云 VMS | [公告](https://cloud.tencent.com/document/product/1128/110430)列月功能费自 2024-08-28 停止新购，不作为新用户路线。 |
+| 华为云 VoiceCall | [用途规则](https://support.huaweicloud.com/VoiceCall_faq/VoiceCall_faq_0000_2.html)面向企业生产、售前售后回访，不作为个人自用推荐。 |
+| 容联云 | [账号类型](https://doc.yuntongxun.com/p/5a51f9cc3b8496dd00dcdf10)允许个人实名但部分业务仅企业；[语音通知 API](https://doc.yuntongxun.com/p/5a5342c73b8496dd00dce139)存在。尚未核实个人可正式开通本用途及报价。 |
+| 网易云信 | [现行产品页](https://netease.im/sms)的语音验证码不等于自由任务通知；未核实当前个人准入。 |
+
+天翼云、七陌、讯众在本次公开资料检索中未取得个人可用的明确依据，保持未知，不推断为全部不支持。语音合成、验证码测试、个人注册成功均不能作为真实语音通知开通证明。
+
+## 海外备选云线路：Zadarma
 
 - [官方外呼页面](https://zadarma.com/en/services/calls/)明确列出个人和企业账户。
 - [中国目的地资费](https://zadarma.com/en/tariffs/calls/china/)当前列出中国手机 US$0.70/分钟，按整分钟计费；实际账户开通和费用以服务商确认及控制台为准。
