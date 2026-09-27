@@ -1,0 +1,8 @@
+if(PROJECT_NAME STREQUAL "baresip")
+  get_filename_component(ACB_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+  function(acb_set_entrypoint)
+    set_property(TARGET baresip_exe PROPERTY SOURCES "${ACB_PROJECT_ROOT}/src/sip/native-launcher.c")
+    target_compile_definitions(baresip_exe PRIVATE BARESIP_UPSTREAM_MAIN="${CMAKE_CURRENT_SOURCE_DIR}/src/main.c")
+  endfunction()
+  cmake_language(DEFER CALL acb_set_entrypoint)
+endif()

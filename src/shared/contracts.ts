@@ -34,5 +34,6 @@ export interface CallProvider {
   check(config: AppConfig, options?: { remote?: boolean }): Promise<CheckResult>;
   dial(request: CallRequest, config: AppConfig): Promise<CallResult>;
   cancel(callId: string, config: AppConfig): Promise<CheckResult>;
+  shutdown?(): Promise<CheckResult>;
   poll?(callId: string, config: AppConfig, createdAt: string): Promise<CallResult>;
 }

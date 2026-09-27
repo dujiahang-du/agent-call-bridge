@@ -1,29 +1,52 @@
 param([string]$Message = 'chore: verified project checkpoint')
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$taskSyncLock = $null
 Push-Location -LiteralPath $taskRoot
 try {
-  $taskGitRoot = (git rev-parse --show-toplevel).Trim()
-  if (([IO.Path]::GetFullPath($taskGitRoot)) -ne $taskRoot) { throw 'Repository root mismatch' }
-  $taskRemote = (git remote get-url origin).Trim()
-  if ($taskRemote -notmatch '^https://github\.com/dujiahang-du/agent-call-bridge(?:\.git)?$') { throw 'Unexpected remote; sync refused' }
-  # 总控先精确暂存经检查的文件，本脚本从不使用 git add .。
-  node scripts/check-safe.mjs
-  if ($LASTEXITCODE -ne 0) { throw 'Staged safety check failed' }
-  git diff --cached --quiet
-  if ($LASTEXITCODE -eq 1) {
-    git commit -m $Message
-    if ($LASTEXITCODE -ne 0) { throw 'Commit failed' }
+  $taskGitRoot = git rev-parse --show-toplevel
+  if ($LASTEXITCODE -ne 0 -or ([IO.Path]::GetFullPath($taskGitRoot.Trim())) -ne $taskRoot) { throw 'Repository root mismatch' }
+  $taskGitDir = git rev-parse --absolute-git-dir
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot locate repository lock directory' }
+  # OS releases exclusive handle after crash. Never break a competing lock.
+  try { $taskSyncLock = [IO.File]::Open((Join-Path $taskGitDir.Trim() 'agent-call-bridge-sync.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+  catch { throw 'Another project sync is running; preserving all local work' }
+  function Assert-ProjectRemote {
+    $taskFetchUrls = @(git remote get-url --all origin)
+    if ($LASTEXITCODE -ne 0 -or $taskFetchUrls.Count -ne 1) { throw 'Unexpected fetch remote; sync refused' }
+    $taskPushUrls = @(git remote get-url --push --all origin)
+    if ($LASTEXITCODE -ne 0 -or $taskPushUrls.Count -ne 1) { throw 'Unexpected push remote; sync refused' }
+    foreach ($taskUrl in @($taskFetchUrls[0], $taskPushUrls[0])) {
+      if ($taskUrl -cnotmatch '^https://github\.com/dujiahang-du/agent-call-bridge(?:\.git)?$') { throw 'Unexpected remote; sync refused' }
+    }
   }
+  Assert-ProjectRemote
+  # Only explicitly pre-staged files are eligible. This script never stages.
   node scripts/check-safe.mjs --history
-  if ($LASTEXITCODE -ne 0) { throw 'History safety check failed' }
-  git fetch origin
+  if ($LASTEXITCODE -ne 0) { throw 'Index/history safety check failed; sync paused' }
+  git diff --cached --quiet
+  $taskDiffExit = $LASTEXITCODE
+  if ($taskDiffExit -gt 1) { throw 'Cannot inspect staged changes' }
+  if ($taskDiffExit -eq 1) {
+    git commit -m $Message
+    if ($LASTEXITCODE -ne 0) { throw 'Commit failed; preserving local work' }
+  }
+  git fetch --no-tags origin
   if ($LASTEXITCODE -ne 0) { throw 'Fetch failed; preserving local work' }
   git show-ref --verify --quiet refs/remotes/origin/main
-  if ($LASTEXITCODE -eq 0) {
+  $taskRemoteRefExit = $LASTEXITCODE
+  if ($taskRemoteRefExit -gt 1) { throw 'Cannot inspect remote branch' }
+  if ($taskRemoteRefExit -eq 0) {
     git merge-base --is-ancestor origin/main HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Remote is not an ancestor; no force push' }
   }
-  git push -u origin HEAD:main
+  # Inspect new commit + fetched history and recheck resolved URL before transfer.
+  node scripts/check-safe.mjs --history
+  if ($LASTEXITCODE -ne 0) { throw 'Final history safety check failed; sync paused' }
+  Assert-ProjectRemote
+  git -c push.followTags=false push -u origin HEAD:main
   if ($LASTEXITCODE -ne 0) { throw 'Push failed; preserving local work' }
-} finally { Pop-Location }
+} finally {
+  if ($null -ne $taskSyncLock) { $taskSyncLock.Dispose() }
+  Pop-Location
+}

@@ -1,0 +1,60 @@
+import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+test.beforeEach(async ({ page }) => {
+  const connection = JSON.parse(readFileSync(join(process.env.ACB_UI_TEST_DIR!, 'connection.json'), 'utf8'));
+  await page.goto(`/#token=${connection.token}`);
+  await expect(page.getByText('Bridge 运行中', { exact: true })).toBeVisible();
+});
+test('首次启动向导、Mock通知、配置保存和重载', async ({ page }) => {
+  await expect(page.getByRole('heading', { name: '先建立一条安心的连接' })).toBeVisible();
+  await page.getByRole('button', { name: '稍后配置，进入工作台' }).click();
+  await page.getByRole('button', { name: '运行模拟通话' }).click();
+  await expect(page.getByRole('status')).toContainText('不会拨打真实号码');
+  await expect(page.getByText('模拟完成', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: '通话设置', exact: true }).click();
+  await page.getByLabel('无进展提醒（分钟）').fill('20');
+  await page.getByRole('button', { name: '保存设置', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('设置已保存');
+  await page.reload();
+  await page.getByRole('button', { name: '通话设置', exact: true }).click();
+  await expect(page.getByLabel('无进展提醒（分钟）')).toHaveValue('20');
+  await page.getByRole('button', { name: '工作台', exact: true }).click();
+  await page.screenshot({ path: '.local/ui-workbench.png', fullPage: true });
+});
+test('暂停/恢复、中文语音和受限线路提示', async ({ page }) => {
+  const skip=page.getByRole('button', { name: '稍后配置，进入工作台' }); if(await skip.isVisible())await skip.click();
+  await page.getByRole('button', { name: '紧急停止', exact: true }).click();
+  await expect(page.getByText('通知已暂停', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '恢复通知', exact: true }).click();
+  await expect(page.getByText('Bridge 运行中', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '通话设置', exact: true }).click();
+  await page.getByRole('combobox', { name: '电话服务', exact: true }).selectOption('twilio');
+  await expect(page.getByText(/Twilio 不支持中国大陆/)).toBeVisible();
+  await page.getByRole('combobox', { name: '电话服务', exact: true }).selectOption('mock');
+  await page.getByRole('button', { name: '生成中文试听', exact: true }).click();
+  await expect(page.getByLabel('中文语音试听')).toBeVisible();
+  await expect.poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.readyState)).toBeGreaterThanOrEqual(1);
+  expect(await page.locator('audio').evaluate((a: HTMLAudioElement) => a.duration)).toBeGreaterThan(1);
+});
+test('真实后台待决定事件可在界面回复，重复答复拒绝', async ({ page, request }) => {
+  const skip=page.getByRole('button', { name: '稍后配置，进入工作台' }); if(await skip.isVisible())await skip.click();
+  const connection=JSON.parse(readFileSync(join(process.env.ACB_UI_TEST_DIR!, 'connection.json'), 'utf8'));
+  const headers={Authorization:`Bearer ${connection.token}`};
+  const response=await request.post('/api/events',{headers,data:{eventId:crypto.randomUUID(),taskId:'ui-decision-fixture',source:'ui-test-fixture',type:'decision_required',summary:'这是UI自动化夹具，不是真实Agent任务',decision:{question:'选择下一步验证方式',options:[{id:'continue',label:'继续本地验证'},{id:'stop',label:'停止本地验证'}]}}});
+  expect(response.ok()).toBeTruthy(); const data=await response.json();
+  await page.getByRole('button',{name:'继续本地验证',exact:true}).click();
+  await expect(page.getByRole('status')).toContainText('答复已保存');
+  const decision=await request.get(`/api/decisions/${data.decision.id}`,{headers});
+  expect((await decision.json()).optionId).toBe('continue');
+  const duplicate=await request.post(`/api/decisions/${data.decision.id}/respond`,{headers,data:{optionId:'stop'}}); expect(duplicate.ok()).toBeFalsy();
+});
+test('未认证请求被拒绝，敏感配置不进入页面', async ({ page, request }) => {
+  const unauth=await request.get('/api/config'); expect(unauth.status()).toBe(401);
+  const secret=JSON.parse(readFileSync(join(process.env.ACB_UI_TEST_DIR!, 'connection.json'), 'utf8')).token;
+  expect(await page.locator('body').innerText()).not.toContain(secret);
+  expect(page.url()).not.toContain(secret);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
