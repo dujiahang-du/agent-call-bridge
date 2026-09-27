@@ -36,6 +36,21 @@ public sealed class AcbConsoleHost : IDisposable
     static extern bool SetConsoleCtrlHandler(Handler handler, bool add);
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
     [DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern IntPtr CommandLineToArgvW(string command, out int count);
+    [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr memory);
+
+    public static string[] ParseArguments(string command)
+    {
+        int count;
+        IntPtr memory = CommandLineToArgvW(command, out count);
+        if (memory == IntPtr.Zero) throw new Win32Exception();
+        try {
+            var result = new string[count];
+            for (int i = 0; i < count; i++) result[i] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(memory, i * IntPtr.Size));
+            return result;
+        } finally { LocalFree(memory); }
+    }
 
     readonly object gate = new object();
     readonly Handler handler;

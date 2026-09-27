@@ -26,6 +26,8 @@ try {
   Write-Host '正在启动，请保留这个黑窗口。'
   Write-Host '关闭窗口或按 Ctrl+C 即停止本机服务；下次双击即可重新启动。'
   Add-Type -Path (Join-Path $PSScriptRoot 'ConsoleHost.cs')
+  try { $taskResumeMigrated = & (Join-Path $PSScriptRoot 'legacy-service.ps1') -ProjectRoot $taskRoot }
+  catch { Fail-Launch '无法安全迁移旧服务。请用原目录的 Stop.cmd 正常停止；未结束其他进程或删除实例锁。' }
   $taskHost = [AcbConsoleHost]::new($taskNode, (Join-Path $PSScriptRoot 'managed-server.mjs'), $taskRoot, $taskData)
   $taskIdentity = Get-CimInstance Win32_Process -Filter "ProcessId=$($taskHost.Pid)"
   if (-not $taskIdentity) { Fail-Launch '无法核对本次服务进程，已停止启动。' }
@@ -38,7 +40,7 @@ try {
       try {
         $taskConnection = Get-Content -LiteralPath $taskConnectionPath -Raw | ConvertFrom-Json
         if ($taskConnection.url -eq $taskUrl) {
-          $null = Invoke-RestMethod -Uri "$taskUrl/api/status" -Headers @{Authorization="Bearer $($taskConnection.token)"} -TimeoutSec 1
+          $taskStatus = Invoke-RestMethod -Uri "$taskUrl/api/status" -Headers @{Authorization="Bearer $($taskConnection.token)"} -TimeoutSec 1
           $taskRunning = $true
           break
         }
@@ -49,6 +51,10 @@ try {
   if (-not $taskRunning) { Fail-Launch '服务启动超时，请检查端口与 .local/server.stderr.log。' }
   # A failed replacement must not overwrite the stop record of a running older version.
   @{pid=$taskHost.Pid;executable=$taskIdentity.ExecutablePath;created=$taskIdentity.CreationDate.ToUniversalTime().Ticks.ToString();main=$taskMain;launcherPid=$PID;consoleWindow=$taskHost.ConsoleWindow} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskData 'server-process.json') -Encoding utf8
+  if ($taskResumeMigrated) {
+    if ($taskStatus.realCallsEnabled) { Fail-Launch '新服务状态异常，已停止启动。' }
+    $null = Invoke-RestMethod -Method Post -Uri "$taskUrl/api/pause" -Headers @{Authorization="Bearer $($taskConnection.token)"} -ContentType 'application/json' -Body '{"paused":false}' -TimeoutSec 3 -MaximumRedirection 0
+  }
   if (-not $NoBrowser) { Start-Process "$taskUrl/#token=$($taskConnection.token)" }
   Write-Host "已启动：$taskUrl" -ForegroundColor Green
   Write-Host '真实电话仍需在工作台明确授权。关闭网页不会停止服务，关闭本窗口才会停止。'

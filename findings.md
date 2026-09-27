@@ -24,3 +24,7 @@ TypeScript / Fastify 5 / React 19 / Vite 8 / Node SQLite。Windows 系统中文 
 启动器持有独立 Windows Job（`KILL_ON_JOB_CLOSE`），服务先等待私有 stdin 启动信号，分配入 Job 后才导入后端；浏览器不属于该 Job。关闭黑窗口先通过 stdin 请求停服，3秒后清理本次进程树。这样不依赖 PowerShell `finally` 在窗口被强制关闭时执行，也不按进程名称批量结束程序。
 
 官方依据：[Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)、[控制台关闭回调及其期限](https://learn.microsoft.com/en-us/windows/console/handlerroutine)。Windows 自带 PowerShell/.NET 本地编译辅助代码，无额外安装；发行包检测覆盖这一依赖。操作系统快速关机可能不给清理时间，云端已受理通话不保证可取消。
+
+## 个人 +86 路线补核
+
+2026-09-27：目标明确为原生 +86 手机号码接听，不采用 App 来电替代。Zadarma 官方个人账户及中国手机 US$0.70/分钟资费可证，但大陆个人开户、自动通知用途和实际目的地放行仍待平台确认；不是已落实线路。VoIP.ms 当前条款排除 China。可选自有固话+FXO路线需运营商同意及硬件实测。集中证据与客服问题见 [个人线路候选](docs/personal-86-options.md)，不再重复全平台调研。

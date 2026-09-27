@@ -1,5 +1,7 @@
 # 交付与恢复状态
 
+v0.1.4旧后台迁移修复已验收，正在安全发布。用户根目录错误源于仍运行的旧后台实例，已核实身份后正常停止，真实黑窗口与工作台恢复。补同目录安全迁移与旧暂停状态兼容；ZIP92项、无系统Node/npm诊断7项、界面1项回归通过，无本次测试进程残留或真实外呼。公开线路方向明确为原生+86手机接听；Zadarma仅待审核的个人候选，详见docs/personal-86-options.md，不能称为已落实。下一步核实Release资产后更新交付状态。
+
 最新版本 v0.1.3 已发布：https://github.com/dujiahang-du/agent-call-bridge/releases/tag/v0.1.3 。代码标签a6c6a1c。双击启动、关窗/Ctrl+C停止本次服务及子进程；重复窗口隔离，正常重开直接Mock，手动暂停保留，真实授权不恢复。类型/构建、62/62后端等、5/5浏览器、59/59最终包窗口检查、7项无系统Node/npm运行诊断通过，独立复审通过。ZIP SHA256：268a08bb19b5200e86bf38abb6ef18cb9674bf86f2815de53165d3c65fb60884，与GitHub资产digest一致、匿名下载200。候选和9次提交历史扫描无泄漏。证据见.local/launcher-evidence-v013.json与.local/portable-static-v013.json；所有本次测试进程已退出。以下为此前版本记录。
 
 最新版本 v0.1.2 已发布：https://github.com/dujiahang-du/agent-call-bridge/releases/tag/v0.1.2 。标签823ccea增加电话服务官方申请入口、条件和SIP账号获取说明，向导与设置页即时同步；保留v0.1.1界面。类型/构建、浏览器5/5、独立Review、便携包41/41通过。包SHA256为3c50110599f0b5b8f903d4ee72b463843c32232c4cb128ad3a2aba9f561376ac，与GitHub一致。未自动注册、充值或真实拨号；证据.local/portable-evidence-v012.json。以下为此前版本记录。

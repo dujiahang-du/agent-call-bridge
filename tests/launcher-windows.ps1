@@ -1,4 +1,4 @@
-﻿param([string]$NodePath='',[string]$ProjectRoot='')
+﻿param([string]$NodePath='',[string]$ProjectRoot='',[switch]$LegacyOnly)
 $ErrorActionPreference='Stop'
 if($env:OS -ne 'Windows_NT'){throw 'This test requires Windows; native console/Job coverage cannot be simulated.'}
 $taskRepository=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -50,6 +50,7 @@ function New-LauncherCase([string]$Name,[switch]$Stubborn){
   $taskCaseRoot=Join-Path $taskRun $Name
   New-Item -ItemType Directory -Path (Join-Path $taskCaseRoot 'scripts'),(Join-Path $taskCaseRoot 'runtime') | Out-Null
   foreach($taskFile in @('start.ps1','stop.ps1','ConsoleHost.cs','managed-server.mjs')){Copy-Item -LiteralPath (Join-Path $taskRoot "scripts/$taskFile") -Destination (Join-Path $taskCaseRoot 'scripts')}
+  if(Test-Path -LiteralPath (Join-Path $taskRoot 'scripts/legacy-service.ps1')){Copy-Item -LiteralPath (Join-Path $taskRoot 'scripts/legacy-service.ps1') -Destination (Join-Path $taskCaseRoot 'scripts')}
   foreach($taskFile in @('package.json','Start.cmd','Stop.cmd')){Copy-Item -LiteralPath (Join-Path $taskRoot $taskFile) -Destination $taskCaseRoot}
   Copy-Item -LiteralPath (Join-Path $taskRoot 'dist') -Destination $taskCaseRoot -Recurse
   New-Item -ItemType Junction -Path (Join-Path $taskCaseRoot 'node_modules') -Target (Join-Path $taskRoot 'node_modules') | Out-Null
@@ -59,7 +60,7 @@ function New-LauncherCase([string]$Name,[switch]$Stubborn){
   $script:taskEvidence.cases += @{name=$Name;root=$taskCaseRoot;port=$taskCase.port;stubborn=[bool]$Stubborn}
   return $taskCase
 }
-function Open-Launcher($Case,[string]$Label,[switch]$Entry){
+function Open-Launcher($Case,[string]$Label,[switch]$Entry,[switch]$NonInteractive){
   $env:ACB_PORT=[string]$Case.port;$env:ACB_CALLBACK_PORT=[string]$Case.callbackPort
   Remove-Item Env:ACB_DATA_DIR -ErrorAction SilentlyContinue
   $taskProbe=Join-Path $taskRun ($Label+'-window.json')
@@ -71,6 +72,7 @@ function Open-Launcher($Case,[string]$Label,[switch]$Entry){
     $taskProcess=Start-Process -FilePath $env:ComSpec -ArgumentList $taskArguments -WindowStyle Normal -PassThru
   }else{
     $taskArguments='-NoProfile -ExecutionPolicy Bypass -File "'+$taskFixture+'" -ProjectRoot "'+$Case.root+'" -ProbePath "'+$taskProbe+'"'
+    if($NonInteractive){$taskArguments+=' -NonInteractive'}
     $taskProcess=Start-Process -FilePath $taskWindowsPS -ArgumentList $taskArguments -WindowStyle Hidden -PassThru
   }
   $taskIdentity=Register-Owned $taskProcess.Id
@@ -80,7 +82,7 @@ function Open-Launcher($Case,[string]$Label,[switch]$Entry){
   if($Entry){Assert-Launcher ([AcbLauncherTestWindows]::IsWindowVisible([IntPtr]$taskWindow.window)) 'Real Start.cmd entry owns a visible console window'}
   $taskHandle=@{window=[long]$taskWindow.window;owner=$taskIdentity;label=$Label}
   [void]$script:taskWindows.Add($taskHandle)
-  return @{identity=$taskIdentity;window=$taskHandle;case=$Case;entry=[bool]$Entry}
+  return @{identity=$taskIdentity;process=$taskProcess;window=$taskHandle;case=$Case;entry=[bool]$Entry}
 }
 function Close-Launcher($Launcher){
   Assert-Launcher (Test-OwnedAlive $Launcher.identity) 'Window close targets a still-owned launcher instance'
@@ -128,11 +130,78 @@ function Wait-LauncherStopped($Launcher){
   Wait-Launcher {-not (Test-LauncherPort $Launcher.case.port)} 'service port closed' 5000
   Assert-Launcher $true 'Launcher, owned Node and listening port are stopped'
 }
+function Open-Legacy($Case,[switch]$Paused){
+  $env:ACB_PORT=[string]$Case.port;$env:ACB_CALLBACK_PORT=[string]$Case.callbackPort
+  Remove-Item Env:ACB_DATA_DIR -ErrorAction SilentlyContinue
+  $taskMain=Join-Path $Case.root 'dist/server/main.js'
+  $taskActual=Join-Path $Case.root 'dist/server/launcher-legacy-actual.js'
+  Copy-Item -LiteralPath $taskMain -Destination $taskActual
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'fixtures/launcher-legacy-main.mjs') -Destination $taskMain -Force
+  $taskData=Join-Path $Case.root '.local';New-Item -ItemType Directory -Path $taskData | Out-Null
+  $taskLegacyNode=Join-Path $Case.root 'runtime/node.exe'
+  $taskProcess=Start-Process -FilePath $taskLegacyNode -ArgumentList ('"'+$taskMain+'"') -WorkingDirectory $Case.root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $taskData 'legacy.stdout.log') -RedirectStandardError (Join-Path $taskData 'legacy.stderr.log') -PassThru
+  $taskIdentity=Register-Owned $taskProcess.Id
+  $taskLegacy=@{identity=$taskIdentity;case=$Case}
+  Wait-Launcher {
+    try{
+      $taskConnection=Get-Content -LiteralPath (Join-Path $taskData 'connection.json') -Raw | ConvertFrom-Json
+      $null=Invoke-RestMethod -Uri "$($taskConnection.url)/api/status" -Headers @{Authorization="Bearer $($taskConnection.token)"} -TimeoutSec 1
+      return $true
+    }catch{return $false}
+  } 'bare legacy backend readiness'
+  $taskLegacy.connection=Get-Content -LiteralPath (Join-Path $taskData 'connection.json') -Raw | ConvertFrom-Json
+  @{pid=$taskIdentity.pid;executable=$taskIdentity.executable;created=$taskIdentity.created;main=$taskMain} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskData 'server-process.json') -Encoding utf8
+  Copy-Item -LiteralPath $taskActual -Destination $taskMain -Force
+  if($Paused){$null=Request-Launcher $taskLegacy '/api/pause' 'Post' @{paused=$true}}
+  Assert-Launcher ((Request-Launcher $taskLegacy '/api/status').paused -eq [bool]$Paused) 'Old bare backend has the requested initial pause state'
+  return $taskLegacy
+}
+function Check-LegacyMigration(){
+  foreach($taskManualPause in @($false,$true)){
+    $taskLabel=if($taskManualPause){'legacy-paused'}else{'legacy-active'}
+    $taskCaseName=if($taskManualPause){'旧后台 手动暂停'}else{'旧后台 正常运行'}
+    $taskLegacyCase=New-LauncherCase $taskCaseName
+    $taskOld=Open-Legacy $taskLegacyCase -Paused:$taskManualPause
+    $taskConfig=Request-Launcher $taskOld '/api/config';$taskConfig.voice.rate=1
+    $null=Request-Launcher $taskOld '/api/config' 'Put' $taskConfig
+    $taskNew=Open-Launcher $taskLegacyCase $taskLabel -Entry;Connect-Launcher $taskNew
+    Assert-Launcher (-not (Test-OwnedAlive $taskOld.identity) -and $taskNew.worker.pid -ne $taskOld.identity.pid) 'Verified bare backend exits and the visible launcher takes ownership'
+    $taskOldExit=Get-Content -LiteralPath (Join-Path $taskLegacyCase.root '.local/legacy-shutdown-fixture.json') -Raw | ConvertFrom-Json
+    Assert-Launcher ($taskOldExit.simulatedVersion -eq '0.1.2' -and $taskOldExit.paused -eq 'true' -and $null -eq $taskOldExit.resumeMarker) 'Fixture confirms simulated v0.1.2 paused=true residue without a resume marker'
+    Assert-Launcher ((Request-Launcher $taskNew '/api/config').voice.rate -eq 1) 'Legacy migration preserves saved configuration'
+    $taskStatus=Request-Launcher $taskNew '/api/status'
+    Assert-Launcher (-not $taskStatus.realCallsEnabled -and $taskStatus.paused -eq $taskManualPause) 'Migration preserves intentional pause while leaving real authorization disabled'
+    if($taskManualPause){
+      $taskMock=Request-Launcher $taskNew '/api/test' 'Post' @{}
+      Start-Sleep -Milliseconds 400
+      $taskQueued=@(Request-Launcher $taskNew '/api/notifications' | Where-Object {$_.id -eq $taskMock.notification.id -and $_.status -eq 'queued'})
+      Assert-Launcher ($taskQueued.Count -eq 1) 'Manually paused legacy service remains paused and does not execute queued Mock'
+    }else{Check-Mock $taskNew}
+    Close-Launcher $taskNew;Wait-LauncherStopped $taskNew
+  }
+  $taskMismatchCase=New-LauncherCase '旧后台 身份不符'
+  $taskOld=Open-Legacy $taskMismatchCase
+  $taskRecordPath=Join-Path $taskMismatchCase.root '.local/server-process.json'
+  $taskRecord=Get-Content -LiteralPath $taskRecordPath -Raw | ConvertFrom-Json
+  $taskRecord.created=([long]$taskRecord.created+1).ToString()
+  $taskRecord | ConvertTo-Json | Set-Content -LiteralPath $taskRecordPath -Encoding utf8
+  $taskRecordHash=(Get-FileHash -LiteralPath $taskRecordPath).Hash
+  $taskRejected=Open-Launcher $taskMismatchCase 'legacy-mismatch' -NonInteractive
+  Wait-Launcher {-not (Test-OwnedAlive $taskRejected.identity)} 'identity mismatch launch refusal'
+  $taskRejected.process.Refresh()
+  Assert-Launcher ($taskRejected.process.ExitCode -ne 0) 'Mismatched legacy identity causes explicit startup failure'
+  Assert-Launcher ((Test-OwnedAlive $taskOld.identity) -and -not (Request-Launcher $taskOld '/api/status').paused) 'Mismatched legacy identity is neither stopped nor paused'
+  Assert-Launcher ((Get-FileHash -LiteralPath $taskRecordPath).Hash -eq $taskRecordHash) 'Rejected migration does not overwrite the old owner record'
+  $null=Request-Launcher $taskOld '/api/shutdown' 'Post' @{confirmation='关闭本机服务并停止后续通知'}
+  Wait-Launcher {-not (Test-OwnedAlive $taskOld.identity) -and -not (Test-LauncherPort $taskMismatchCase.port)} 'owned legacy fixture cleanup'
+}
 try{
   if(-not $NodePath){foreach($taskCandidate in @('runtime/node.exe','.tools/node-runtime/node-v22.23.3-win-x64/node.exe')){if(Test-Path -LiteralPath (Join-Path $taskRoot $taskCandidate)){$NodePath=Join-Path $taskRoot $taskCandidate;break}}}
   if(-not $NodePath){$NodePath=(Get-Command node -ErrorAction Stop).Source}
   $NodePath=[IO.Path]::GetFullPath($NodePath)
   Assert-Launcher (Test-Path -LiteralPath (Join-Path $taskRoot 'dist/server/main.js')) 'Compiled application is available'
+  if($LegacyOnly -and -not (Test-Path -LiteralPath (Join-Path $taskRoot 'scripts/legacy-service.ps1'))){throw 'Legacy migration helper is not available yet.'}
+  if(-not $LegacyOnly){
   $taskCase=New-LauncherCase '主程序 保存 重开'
   $taskFirst=Open-Launcher $taskCase 'first' -Entry;Connect-Launcher $taskFirst;Check-Mock $taskFirst
   $taskConfig=Request-Launcher $taskFirst '/api/config';$taskConfig.voice.rate=1
@@ -172,7 +241,7 @@ try{
   $taskConflictCase=New-LauncherCase '端口 冲突'
   $taskSentinelPath=Join-Path $taskConflictCase.root '.local/server-process.json'
   New-Item -ItemType Directory -Path (Split-Path -Parent $taskSentinelPath) | Out-Null
-  $taskSentinel=@{sentinel=[guid]::NewGuid().ToString();pid=-1;created='sentinel'} | ConvertTo-Json
+  $taskSentinel=@{sentinel=[guid]::NewGuid().ToString();pid=[int]::MaxValue;created='sentinel'} | ConvertTo-Json
   Set-Content -LiteralPath $taskSentinelPath -Value $taskSentinel -Encoding utf8
   $taskSentinelHash=(Get-FileHash -LiteralPath $taskSentinelPath).Hash
   $taskOccupied=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$taskConflictCase.port)
@@ -206,6 +275,8 @@ try{
   Assert-Launcher ($taskState.stopReceived -ge 1) 'Noncooperative worker received ACB_STOP and deliberately stayed alive'
   Assert-Launcher (([DateTime]::UtcNow-$taskStartedClosing).TotalMilliseconds -ge 2500) 'Forced Job cleanup occurred after the graceful stop interval'
   Assert-Launcher (Test-OwnedAlive $taskControlIdentity) 'External control process is unaffected by owned Job cleanup'
+  }
+  if(Test-Path -LiteralPath (Join-Path $taskRoot 'scripts/legacy-service.ps1')){Check-LegacyMigration}
   $taskEvidence.ok=$true
 }catch{
   $taskEvidence.error=$_.Exception.Message
