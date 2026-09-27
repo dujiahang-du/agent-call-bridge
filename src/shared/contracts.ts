@@ -1,4 +1,4 @@
-export type ProviderId = 'mock' | 'twilio' | 'aliyun' | 'sip';
+export type ProviderId = 'mock' | 'twilio' | 'aliyun' | 'pushplus' | 'ihuyi' | 'ronglian' | 'sip';
 export type EventType = 'task_completed' | 'task_failed' | 'task_stalled' | 'retry_exhausted' | 'decision_required' | 'turn_finished';
 export interface DecisionOption { id: string; label: string }
 export interface AgentEventInput {
@@ -15,6 +15,9 @@ export interface AppConfig {
   providers: {
     twilio: { accountSid: string; authToken: string; from: string; callbackBaseUrl: string };
     aliyun: { accessKeyId: string; accessKeySecret: string; ttsCode: string; regionId: string };
+    pushplus: { token: string; secretKey: string };
+    ihuyi: { apiId: string; apiKey: string; templateId: string };
+    ronglian: { accountSid: string; authToken: string; appId: string; templateText: string };
     sip: { server: string; username: string; password: string; extension: string; port: number; transport: string; executable: string };
   };
   controlPin: string;
@@ -32,7 +35,7 @@ export interface CheckResult { ok: boolean; message: string; checks?: { name: st
 export interface CallProvider {
   id: ProviderId;
   check(config: AppConfig, options?: { remote?: boolean }): Promise<CheckResult>;
-  dial(request: CallRequest, config: AppConfig): Promise<CallResult>;
+  dial(request: CallRequest, config: AppConfig, options?: { signal?: AbortSignal }): Promise<CallResult>;
   cancel(callId: string, config: AppConfig): Promise<CheckResult>;
   shutdown?(): Promise<CheckResult>;
   poll?(callId: string, config: AppConfig, createdAt: string): Promise<CallResult>;

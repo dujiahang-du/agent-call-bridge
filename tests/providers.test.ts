@@ -9,6 +9,7 @@ import { TwilioProvider, type TwilioClientFactory } from '../src/providers/twili
 import { AliyunProvider, type AliyunClient } from '../src/providers/aliyun.js';
 import { createTwilioCallbackApp, type TwilioCallBinding } from '../src/providers/twilio-callback.js';
 import type { AppConfig, CallRequest, CallResult } from '../src/shared/contracts.js';
+import { defaults } from '../src/core/config.js';
 
 const require = createRequire(import.meta.url);
 const sdk = require('@alicloud/dyvmsapi20170525');
@@ -21,7 +22,7 @@ function config(): AppConfig { return {
   mode: 'mock', recipient: { countryCode: '+1', number: '5005550009', consent: true },
   voice: { name: '', rate: 0 }, controlPin: '7531' + '09',
   notification: { enabled: true, types: ['task_completed'], cooldownSeconds: 300, maxPerHour: 3, maxPerDay: 10, stallMinutes: 10, maxRetries: 1 },
-  providers: { twilio: { accountSid: sid, authToken: secret, from: '+15005550006', callbackBaseUrl: 'https://callback.example.test/bridge' }, aliyun: { accessKeyId: 'fixture-id', accessKeySecret: secret, ttsCode: 'TTS_FIXTURE', regionId: 'cn-hangzhou' }, sip: { server: '', username: '', password: '', extension: '', port: 5060, transport: 'udp', executable: '' } },
+  providers: { ...structuredClone(defaults.providers), twilio: { accountSid: sid, authToken: secret, from: '+15005550006', callbackBaseUrl: 'https://callback.example.test/bridge' }, aliyun: { accessKeyId: 'fixture-id', accessKeySecret: secret, ttsCode: 'TTS_FIXTURE', regionId: 'cn-hangzhou' }, sip: { server: '', username: '', password: '', extension: '', port: 5060, transport: 'udp', executable: '' } },
 }; }
 function request(): CallRequest { return { notificationId: 'notification-fixture', eventId: 'event-fixture', taskId: 'task-fixture', eventType: 'task_completed', to: recipient, text: '任务已完成，检查通过。' }; }
 

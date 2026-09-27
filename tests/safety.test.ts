@@ -80,6 +80,83 @@ test('exact fixture allowlist accepts only its known value at its known path', (
     f.git('rm', '-q', '--cached', 'tests/arbitrary.test.ts'); f.put('tests/core.test.ts', syntheticPhone()); assert.ok(has(f.scan(), 'phone'));
   } finally { f.close(); }
 });
+
+test('direct tree refs preserve exact fixture paths even without any commit or index entry', () => {
+  const f = fixture();
+  try {
+    const path = 'tests/providers-pushplus.test.ts';
+    const known = ['fixture', 'pushplus', 'user', 'token'].join('-');
+    f.put(path, JSON.stringify({ token: known }));
+    const tree = f.git('write-tree');
+    f.git('update-ref', 'refs/codex/turn-diffs/fixture/base', tree);
+    f.git('rm', '-q', '--cached', '--', path);
+    const result = f.scan();
+    assert.equal(result.commits, 0); assert.equal(result.indexEntries, 0);
+    assert.equal(result.pathVersions, 1); assert.equal(result.blobs, 1);
+    assert.deepEqual(result.problems, []);
+    assert.equal(f.git('rev-parse', 'refs/codex/turn-diffs/fixture/base'), tree);
+  } finally { f.close(); }
+});
+
+test('nested annotated tags pointing to trees retain paths and still scan tag messages', () => {
+  const f = fixture();
+  try {
+    const path = 'tests/providers-pushplus.test.ts';
+    const known = ['fixture', 'short', 'lived', 'access'].join('-');
+    f.put(path, JSON.stringify({ accessKey: known }));
+    const tree = f.git('write-tree');
+    f.git('tag', '-a', 'tree-inner', tree, '-m', 'tree fixture');
+    f.git('tag', '-a', 'tree-outer', 'tree-inner', '-m', 'nested tree fixture');
+    f.git('rm', '-q', '--cached', '--', path);
+    assert.deepEqual(f.scan().problems, []);
+    f.git('tag', '-a', 'tree-message', 'tree-outer', '-m', syntheticToken());
+    const result = f.scan();
+    assert.equal(result.commits, 0); assert.equal(result.pathVersions, 1);
+    assert.ok(result.problems.some((p: any) => p.path.startsWith('tag ') && p.kind.includes('credential')));
+    assert.ok(!result.problems.some((p: any) => p.path.startsWith('unattached blob ')));
+  } finally { f.close(); }
+});
+
+test('tree refs reject changed fixture values and preserve forbidden aliases of a shared blob', () => {
+  const f = fixture();
+  try {
+    const path = 'tests/providers-pushplus.test.ts';
+    const known = ['fixture', 'pushplus', 'user', 'token'].join('-');
+    f.put(path, JSON.stringify({ token: known }));
+    f.git('update-ref', 'refs/codex/allowed-tree', f.git('write-tree'));
+    f.git('rm', '-q', '--cached', '--', path);
+    f.put('.local/private.txt', JSON.stringify({ token: known }));
+    f.git('update-ref', 'refs/codex/private-tree', f.git('write-tree'));
+    f.git('rm', '-q', '--cached', '--', '.local/private.txt');
+    f.put(path, JSON.stringify({ token: ['different', 'offline', 'value'].join('-') }));
+    f.git('tag', '-a', 'changed-fixture-tree', f.git('write-tree'), '-m', 'changed fixture');
+    f.git('rm', '-q', '--cached', '--', path);
+    const result = f.scan();
+    assert.equal(result.indexEntries, 0); assert.equal(result.commits, 0);
+    assert.ok(result.problems.some((p: any) => p.path === path && p.kind.includes('literal secret')));
+    assert.ok(result.problems.some((p: any) => p.path === '.local/private.txt' && p.kind.includes('forbidden')));
+    assert.ok(result.problems.some((p: any) => p.path === '.local/private.txt' && p.kind.includes('literal secret')));
+  } finally { f.close(); }
+});
+
+test('tree refs still inspect binary contents and genuinely pathless blob references', () => {
+  const f = fixture();
+  try {
+    f.put('binary.txt', Buffer.concat([Buffer.from([0, 255]), Buffer.from(syntheticToken())]));
+    f.git('update-ref', 'refs/codex/binary-tree', f.git('write-tree'));
+    f.git('rm', '-q', '--cached', '--', 'binary.txt');
+    f.put('temporary.txt', syntheticPhone());
+    const blob = f.git('rev-parse', ':temporary.txt');
+    f.git('update-ref', 'refs/codex/pathless-blob', blob);
+    f.git('tag', '-a', 'pathless-blob-tag', blob, '-m', syntheticToken());
+    f.git('rm', '-q', '--cached', '--', 'temporary.txt');
+    const result = f.scan();
+    assert.ok(result.problems.some((p: any) => p.path === 'binary.txt' && p.kind.includes('binary')));
+    assert.ok(result.problems.some((p: any) => p.path === 'binary.txt' && p.kind.includes('credential')));
+    assert.ok(result.problems.some((p: any) => p.path.startsWith('unattached blob ') && p.kind.includes('phone')));
+    assert.ok(result.problems.some((p: any) => p.path.startsWith('tag ') && p.kind.includes('credential')));
+  } finally { f.close(); }
+});
 test('generic literal secrets, domestic numbers and sensitive filenames are redacted', () => {
   const f = fixture();
   try {

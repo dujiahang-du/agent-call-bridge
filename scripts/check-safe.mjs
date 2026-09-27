@@ -34,8 +34,9 @@ const fixtureAllowlist = new Map([
   ['tests/providers.test.ts', new Set(['fixture-only-not-a-real-secret', 'fixture-id', '7531', '+15005550009', '+15005550006', '5005550009'])],
   ['tests/core.test.ts', new Set(['2025550101', 'unit-test-secret', 'dpapi-fixture-secret'])],
   ['tests/sip-native.test.ts', new Set(['synthetic-test-password'])],
+  ['tests/providers-pushplus.test.ts', new Set(['fixture-pushplus-user-token', 'fixture-only-not-a-real-secret', 'fixture-other-token', 'fixture-short-lived-access'])],
   // Display labels / HTML input type, not configured credentials.
-  ['src/web/main.tsx', new Set(['Auth Token', 'AccessKey ID', 'AccessKey Secret', 'text'])],
+  ['src/web/main.tsx', new Set(['Auth Token', 'AccessKey ID', 'AccessKey Secret', 'text', '互亿 API Key', '容联 Auth Token'])],
 ]);
 // Only the enumeration above is also exempt in this scanner's declaration.
 fixtureAllowlist.set('scripts/check-safe.mjs', new Set([...fixtureAllowlist.values()].flatMap(s => [...s])));
@@ -88,6 +89,16 @@ export function scanRepository(repositoryRoot, { history = false } = {}) {
     if (!['100644', '100755'].includes(mode) || type !== 'blob') { report(path, 'symlink/submodule or unsupported Git entry'); return; }
     scanContent(oid, path);
   };
+  // 提交与直接引用的树使用相同路径检查，不能把有路径的内容降为无路径 blob。
+  const inspectTree = tree => {
+    const treeText = textOf(git('ls-tree', '-rz', '--full-tree', tree));
+    if (treeText === null) throw new Error('Invalid UTF-8 historical path');
+    for (const entry of treeText.split('\0').filter(Boolean)) {
+      const match = /^(\d+) (\w+) ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);
+      if (!match) throw new Error('Unrecognized Git tree entry');
+      inspect(match[1], match[2], match[3], match[4]);
+    }
+  };
   const indexText = textOf(git('ls-files', '--stage', '-z'));
   if (indexText === null) throw new Error('Invalid UTF-8 Git path');
   const index = indexText.split('\0').filter(Boolean);
@@ -105,14 +116,18 @@ export function scanRepository(repositoryRoot, { history = false } = {}) {
       commits++;
       const message = git('cat-file', 'commit', commit).toString('utf8').split('\n\n').slice(1).join('\n\n');
       for (const kind of matches(message, '')) report(`commit ${commit.slice(0, 12)} message`, kind);
-      const treeText = textOf(git('ls-tree', '-rz', '--full-tree', commit));
-      if (treeText === null) throw new Error('Invalid UTF-8 historical path');
-      for (const entry of treeText.split('\0').filter(Boolean)) {
-        const match = /^(\d+) (\w+) ([a-f0-9]+)\t([\s\S]+)$/.exec(entry);
-        if (!match) throw new Error('Unrecognized Git tree entry');
-        inspect(match[1], match[2], match[3], match[4]);
-      }
+      inspectTree(commit);
     }
+    // Codex 快照等引用可以直接指向 tree；附注标签也可能嵌套指向 tree。
+    // 仅读取并递归展开这些树，保留每个真实路径，既不删除引用也不豁免其内容。
+    const refs = git('for-each-ref', '--format=%(objectname)').toString('utf8').trim().split('\n').filter(Boolean);
+    const refTrees = new Set();
+    for (const oid of new Set(refs)) {
+      if (!/^[a-f0-9]+$/.test(oid)) throw new Error('Unrecognized reference object');
+      const target = git('rev-parse', `${oid}^{}`).toString('utf8').trim();
+      if (git('cat-file', '-t', target).toString('utf8').trim() === 'tree') refTrees.add(target);
+    }
+    for (const tree of refTrees) inspectTree(tree);
     const objects = git('rev-list', '--objects', '--all', '--no-object-names').toString('utf8').trim().split('\n').filter(Boolean);
     for (const oid of objects) {
       if (seenBlobs.has(oid)) continue;

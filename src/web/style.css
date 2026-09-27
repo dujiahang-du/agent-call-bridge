@@ -15,7 +15,7 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { opacity: .48; cursor: not-allowed; }
 a { color: inherit; }
@@ -135,9 +135,10 @@ td small { display: block; font-size: 11px; color: var(--muted); max-width: 320p
 .settings-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 0 24px; }
 .field { display: block; margin: 18px 0; }
 .field > span { font-size: 13px; display: block; margin-bottom: 9px; color: #465673; }
-.field input, .field select, .page-heading > select { width: 100%; padding: 12px; border: 1px solid #dce3ee; border-radius: 9px; background: #fbfcfe; color: #3c4d69; font-size: 13px; min-height: 44px; min-width: 0; }
-.field input:hover, .field select:hover { border-color: #b8c6e2; }
-.field input:focus, .field select:focus { background: #fff; border-color: #6687ec; }
+.field input, .field select, .field textarea, .page-heading > select { width: 100%; padding: 12px; border: 1px solid #dce3ee; border-radius: 9px; background: #fbfcfe; color: #3c4d69; font-size: 13px; min-height: 44px; min-width: 0; }
+.field input:hover, .field select:hover, .field textarea:hover { border-color: #b8c6e2; }
+.field input:focus, .field select:focus, .field textarea:focus { background: #fff; border-color: #6687ec; }
+.field textarea { resize: vertical; line-height: 1.8; }
 .field input::placeholder { color: #78859b; }
 .page-heading > select { max-width: 210px; }
 .field small { display: block; margin-top: 8px; color: var(--muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
@@ -205,6 +206,12 @@ audio { display: block; margin: 15px 0 0; width: 100%; height: 42px; }
 .provider-links a { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 9px 11px; border: 1px solid #d8e2fa; background: #fff; color: #3458ba; border-radius: 8px; font-size: 12px; text-decoration: none; }
 .provider-links a:hover { border-color: #91a9eb; background: #edf2ff; }
 .provider-help small { display: block; color: #647493; font-size: 11px; line-height: 1.8; }
+.provider-verification { display: inline-block; font-size: 11px; color: #516d96; margin-bottom: 12px; }
+.provider-alternatives { margin: 16px 0; color: var(--subtle); font-size: 12px; line-height: 1.8; }
+.provider-alternatives summary { cursor: pointer; color: #536a92; }
+.provider-alternatives ul { padding-left: 18px; margin: 10px 0; }
+.provider-alternatives li { margin-bottom: 8px; }
+.provider-alternatives a { color: #3458ba; margin-left: 5px; overflow-wrap: anywhere; }
 footer { padding: 22px 40px; border-top: 1px solid var(--line); font-size: 10px; color: var(--subtle); display: flex; justify-content: space-between; letter-spacing: .5px; }
 
 @media(min-width:1600px) {

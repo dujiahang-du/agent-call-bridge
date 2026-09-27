@@ -7,9 +7,9 @@ import type { AppConfig } from '../shared/contracts.js';
 export const defaults: AppConfig = {
   mode: 'mock', recipient: { countryCode: '+86', number: '', consent: false }, voice: { name: '', rate: 0 },
   notification: { enabled: true, types: ['task_completed','task_failed','task_stalled','retry_exhausted','decision_required'], cooldownSeconds: 300, maxPerHour: 3, maxPerDay: 10, stallMinutes: 15, maxRetries: 2 },
-  providers: { twilio: { accountSid: '', authToken: '', from: '', callbackBaseUrl: '' }, aliyun: { accessKeyId: '', accessKeySecret: '', ttsCode: '', regionId: 'cn-hangzhou' }, sip: { server: '', username: '', password: '', extension: '', port: 5060, transport: 'udp', executable: '' } }, controlPin: '',
+  providers: { twilio: { accountSid: '', authToken: '', from: '', callbackBaseUrl: '' }, aliyun: { accessKeyId: '', accessKeySecret: '', ttsCode: '', regionId: 'cn-hangzhou' }, pushplus: { token: '', secretKey: '' }, ihuyi: { apiId: '', apiKey: '', templateId: '' }, ronglian: { accountSid: '', authToken: '', appId: '', templateText: '' }, sip: { server: '', username: '', password: '', extension: '', port: 5060, transport: 'udp', executable: '' } }, controlPin: '',
 };
-const secretPaths = ['providers.twilio.accountSid','providers.twilio.authToken','providers.twilio.from','providers.aliyun.accessKeyId','providers.aliyun.accessKeySecret','providers.sip.password','controlPin'];
+const secretPaths = ['providers.twilio.accountSid','providers.twilio.authToken','providers.twilio.from','providers.aliyun.accessKeyId','providers.aliyun.accessKeySecret','providers.pushplus.token','providers.pushplus.secretKey','providers.ihuyi.apiId','providers.ihuyi.apiKey','providers.ronglian.accountSid','providers.ronglian.authToken','providers.ronglian.appId','providers.sip.password','controlPin'];
 function get(obj: any, path: string) { return path.split('.').reduce((v,k) => v?.[k], obj); }
 function set(obj: any, path: string, value: unknown) { const parts = path.split('.'); const key = parts.pop()!; const target = parts.reduce((v,k) => v[k], obj); target[key] = value; }
 export function mergeConfig(current: AppConfig, patch: any): AppConfig {
@@ -18,7 +18,7 @@ export function mergeConfig(current: AppConfig, patch: any): AppConfig {
   function merge(a: any, b: any) { for (const [key,value] of Object.entries(b ?? {})) { if (!Object.hasOwn(a,key)) throw new Error(`未知配置字段: ${key}`); if (value && typeof value === 'object' && !Array.isArray(value)) { if (!a[key] || typeof a[key] !== 'object') throw new Error('配置类型错误'); merge(a[key],value); } else a[key] = value; } }
   merge(out,patch);
   for (const path of secretPaths) { const value = get(patch,path); if (value === '' || value === undefined) set(out,path,get(current,path)); else if (value === null) set(out,path,''); }
-  if (!['mock','twilio','aliyun','sip'].includes(out.mode)) throw new Error('电话服务无效');
+  if (!['mock','twilio','aliyun','pushplus','ihuyi','ronglian','sip'].includes(out.mode)) throw new Error('电话服务无效');
   if (!/^\+[1-9]\d{0,3}$/.test(out.recipient.countryCode) || !/^\d{0,15}$/.test(out.recipient.number)) throw new Error('请填写有效区号和数字号码');
   if (typeof out.recipient.consent !== 'boolean' || typeof out.notification.enabled !== 'boolean') throw new Error('开关格式错误');
   if (!Array.isArray(out.notification.types) || out.notification.types.some(x => !['task_completed','task_failed','task_stalled','retry_exhausted','decision_required','turn_finished'].includes(x))) throw new Error('通知条件无效');
@@ -35,7 +35,8 @@ export class ConfigStore {
   private path: string;
   constructor(readonly dataDir: string, private testMode = false) {
     mkdirSync(dataDir,{recursive:true,mode:0o700}); this.path = join(dataDir,'config.enc');
-    this.value = existsSync(this.path) ? JSON.parse(this.crypt('decrypt',readFileSync(this.path,'utf8'))) : structuredClone(defaults);
+    // 补齐新通道默认值，保留旧凭据；只读启动不重写原加密文件。
+    this.value = existsSync(this.path) ? mergeConfig(defaults,JSON.parse(this.crypt('decrypt',readFileSync(this.path,'utf8')))) : structuredClone(defaults);
   }
   private crypt(operation: 'encrypt'|'decrypt', input: string): string {
     if (process.platform === 'win32' && !this.testMode) {
