@@ -69,7 +69,7 @@ try {
   while (child && child.exitCode === null && child.signalCode === null && Date.now() < cleanupDeadline) await delay(50);
   evidence.processExited = !child || child.exitCode !== null || child.signalCode !== null;
   if (!evidence.processExited) evidence.ok = false;
-  writeFileSync(join(root, '.local', 'portable-providers-v015.json'), JSON.stringify(evidence, null, 2));
+  writeFileSync(join(root, '.local', `portable-providers-v${version.replaceAll('.', '')}.json`), JSON.stringify(evidence, null, 2));
   console.log(JSON.stringify({ ok: evidence.ok, checks: evidence.checks.length, realCallAttempts: evidence.realCallAttempts }));
   if (!evidence.ok) process.exitCode = 1;
 }
