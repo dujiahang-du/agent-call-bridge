@@ -85,3 +85,7 @@ npm run test:ui
 SIP 原生测试需要固定构建，参见 [SIP 文档](docs/sip.md)。没有原生程序时会明确标记未执行，不算通过。界面测试默认使用本机 Edge。所有测试默认本地模拟，不调用真实云电话或模型。
 
 调研来源和选型见 [findings.md](findings.md)。开发采用安全检查点提交；没有安装永久定时备份任务，不承诺会话结束后自动开发。恢复开发先读源码仓库中的 `task_plan.md` 和 `progress.md`。
+
+## 许可证
+
+本项目采用 [MIT 许可](LICENSE)。第三方组件的许可见[第三方许可声明](THIRD_PARTY_NOTICES.md)。
